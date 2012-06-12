@@ -1,4 +1,9 @@
-Changes between ecm-6.4.1 and ecm-6.4.2:
+Changes between GMP-ECM 6.4.2 and GMP-ECM 6.4.3:
+* Fixed bug reported by user "lorgix" on mersenneforum
+  (http://www.mersenneforum.org/showpost.php?p=286385&postcount=280)
+* Use 64-bit value for random seed under Windows
+
+Changes between GMP-ECM 6.4.1 and GMP-ECM 6.4.2:
 * Corrected the copyright headers
 * Reduced memory usage in stage 1 with -batch={1,2} mode.
 * Fixed bug in modular reduction (could occur only for numbers larger than

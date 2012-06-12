@@ -50,7 +50,7 @@ ecm_init (ecm_params q)
   MEMORY_TAG;
   gmp_randinit_default (q->rng);
   MEMORY_TAG;
-  gmp_randseed_ui (q->rng, get_random_ui ());
+  gmp_randseed_ui (q->rng, get_random_ul ());
   MEMORY_UNTAG;
   q->use_ntt = 1;
   q->stop_asap = NULL;
