@@ -70,7 +70,7 @@ pp1_mul (mpres_t P1, mpres_t P0, mpz_t e, mpmod_t n, mpres_t P, mpres_t Q)
       mpres_set (P1, P0, n);
       return;
     }
-  
+
   /* now e >= 2 */
   mpz_sub_ui (e, e, 1);
   mpres_sqr (P, P0, n);
@@ -119,7 +119,7 @@ pp1_mul (mpres_t P1, mpres_t P0, mpz_t e, mpmod_t n, mpres_t P, mpres_t Q)
    Return value: non-zero iff a factor was found.
 */
 static int
-pp1_stage1 (mpz_t f, mpres_t P0, mpmod_t n, double B1, double *B1done, 
+pp1_stage1 (mpz_t f, mpres_t P0, mpmod_t n, double B1, double *B1done,
             mpz_t go, int (*stop_asap)(void), char *chkfilename)
 {
   double B0, p, q, r, last_chkpnt_p;
@@ -192,9 +192,9 @@ pp1_stage1 (mpz_t f, mpres_t P0, mpmod_t n, double B1, double *B1done,
   pp1_mul (P0, P0, g, n, P, Q);
 
   /* All primes sqrt(B1) < p <= B1 appear with exponent 1. All primes <= B1done
-     are already included with exponent at least 1, so it's safe to skip 
+     are already included with exponent at least 1, so it's safe to skip
      ahead to B1done+1. */
-  
+
   while (p <= *B1done)
     p = (double) getprime_mt (prime_info);
 
@@ -202,7 +202,7 @@ pp1_stage1 (mpz_t f, mpres_t P0, mpmod_t n, double B1, double *B1done,
   for (; p <= B1; p = (double) getprime_mt (prime_info))
     {
       pp1_mul_prac (P0, (ecm_uint) p, n, P, Q, R, S, T);
-  
+
       if (stop_asap != NULL && (*stop_asap) ())
         goto interrupt;
       if (chkfilename != NULL && p > last_chkpnt_p + 10000. &&
@@ -218,10 +218,10 @@ pp1_stage1 (mpz_t f, mpres_t P0, mpmod_t n, double B1, double *B1done,
      In that case, set to B1 */
   if (p > B1)
     p = B1;
-  
+
   if (p > *B1done)
     *B1done = p;
-  
+
   mpres_sub_ui (P, P0, 2, n);
   mpres_gcd (f, P, n);
   youpi = mpz_cmp_ui (f, 1);
@@ -236,7 +236,7 @@ clear_and_exit:
   mpres_clear (T, n);
   mpz_clear (g);
   mpres_clear (P, n);
-  
+
   return youpi;
 }
 
@@ -309,89 +309,89 @@ pp1 (mpz_t f, mpz_t p, mpz_t n, mpz_t go, double *B1done, double B1,
   if (mpz_sgn (B2min) < 0)
     mpz_set_d (B2min, B1);
 
+  {
+    long P;
+    const unsigned long lmax = 1UL<<28; /* An upper bound */
+    unsigned long lmax_NTT, lmax_noNTT;
+
+    mpz_init (faststage2_params.m_1);
+    faststage2_params.l = 0;
+    faststage2_params.file_stem = TreeFilename;
+
+    /* Find out what the longest transform length is we can do at all.
+       If no maxmem is given, the non-NTT can theoretically do any length. */
+
+    lmax_NTT = 0;
+    if (use_ntt)
     {
-      long P;
-      const unsigned long lmax = 1UL<<28; /* An upper bound */
-      unsigned long lmax_NTT, lmax_noNTT;
-      
-      mpz_init (faststage2_params.m_1);
-      faststage2_params.l = 0;
-      faststage2_params.file_stem = TreeFilename;
-      
-      /* Find out what the longest transform length is we can do at all.
-	 If no maxmem is given, the non-NTT can theoretically do any length. */
-
-      lmax_NTT = 0;
-      if (use_ntt)
-	{
-	  unsigned long t, t2 = 0;
-	  /* See what transform length that the NTT can handle (due to limited 
-	     primes and limited memory) */
-	  t = mpzspm_max_len (n);
-	  lmax_NTT = MIN (lmax, t);
-	  if (maxmem != 0.)
-	    {
-	      t = pp1fs2_maxlen (double_to_size (maxmem), n, use_ntt, 0);
-	      t = MIN (t, lmax_NTT);
-	      /* Maybe the two pass variant lets us use a longer transform */
-	      t2 = pp1fs2_maxlen (double_to_size (maxmem), n, use_ntt, 1);
-	      t2 = MIN (t2, lmax_NTT);
-	      if (t2 > t)
-		{
-		  t = t2;
-		  twopass = 1;
-		}
-	      lmax_NTT = t;
-	    }
-	  outputf (OUTPUT_DEVVERBOSE, "NTT can handle lmax <= %lu\n", lmax_NTT);
-	}
-
-      /* See what transform length that the non-NTT code can handle */
-      lmax_noNTT = lmax;
+      unsigned long t, t2 = 0;
+      /* See what transform length that the NTT can handle (due to limited
+         primes and limited memory) */
+      t = mpzspm_max_len (n);
+      lmax_NTT = MIN (lmax, t);
       if (maxmem != 0.)
-	{
-	  unsigned long t;
-	  t = pp1fs2_maxlen (double_to_size (maxmem), n, 0, 0);
-	  lmax_noNTT = MIN (lmax_noNTT, t);
-	  outputf (OUTPUT_DEVVERBOSE, "non-NTT can handle lmax <= %lu\n", 
-		   lmax_noNTT);
-	}
-
-      P = choose_P (B2min, B2, MAX(lmax_noNTT, lmax_NTT), k, 
-		    &faststage2_params, B2min, B2, use_ntt, ECM_PP1);
-      if (P == ECM_ERROR)
-	{
-          outputf (OUTPUT_ERROR, 
-                   "Error: cannot choose suitable P value for your stage 2 "
-                   "parameters.\nTry a shorter B2min,B2 interval.\n");
-	  mpz_clear (faststage2_params.m_1);
-	  return ECM_ERROR;
-	}
-
-      /* See if the selected parameters let us use NTT or not */
-      if (faststage2_params.l > lmax_NTT)
-	use_ntt = 0;
-      
-      if (maxmem != 0.)
-	{
-	  unsigned long MB;
-	  char *s;
-	  if (!use_ntt)
-	    s = "out";
-	  else if (twopass)
-	    s = " two pass";
-	  else
-	    s = " one pass";
-
-	  MB = pp1fs2_memory_use (faststage2_params.l, n, use_ntt, twopass)
-	    / 1048576;
-	  outputf (OUTPUT_VERBOSE, "Using lmax = %lu with%s NTT which takes "
-		   "about %luMB of memory\n", faststage2_params.l, s, MB);
-	}
+      {
+        t = pp1fs2_maxlen (double_to_size (maxmem), n, use_ntt, 0);
+        t = MIN (t, lmax_NTT);
+        /* Maybe the two pass variant lets us use a longer transform */
+        t2 = pp1fs2_maxlen (double_to_size (maxmem), n, use_ntt, 1);
+        t2 = MIN (t2, lmax_NTT);
+        if (t2 > t)
+        {
+          t = t2;
+          twopass = 1;
+        }
+        lmax_NTT = t;
+      }
+      outputf (OUTPUT_DEVVERBOSE, "NTT can handle lmax <= %lu\n", lmax_NTT);
     }
 
+    /* See what transform length that the non-NTT code can handle */
+    lmax_noNTT = lmax;
+    if (maxmem != 0.)
+    {
+      unsigned long t;
+      t = pp1fs2_maxlen (double_to_size (maxmem), n, 0, 0);
+      lmax_noNTT = MIN (lmax_noNTT, t);
+      outputf (OUTPUT_DEVVERBOSE, "non-NTT can handle lmax <= %lu\n",
+               lmax_noNTT);
+    }
+
+    P = choose_P (B2min, B2, MAX(lmax_noNTT, lmax_NTT), k,
+                  &faststage2_params, B2min, B2, use_ntt, ECM_PP1);
+    if (P == ECM_ERROR)
+    {
+      outputf (OUTPUT_ERROR,
+               "Error: cannot choose suitable P value for your stage 2 "
+               "parameters.\nTry a shorter B2min,B2 interval.\n");
+      mpz_clear (faststage2_params.m_1);
+      return ECM_ERROR;
+    }
+
+    /* See if the selected parameters let us use NTT or not */
+    if (faststage2_params.l > lmax_NTT)
+      use_ntt = 0;
+
+    if (maxmem != 0.)
+    {
+      unsigned long MB;
+      char *s;
+      if (!use_ntt)
+        s = "out";
+      else if (twopass)
+        s = " two pass";
+      else
+        s = " one pass";
+
+      MB = pp1fs2_memory_use (faststage2_params.l, n, use_ntt, twopass)
+        / 1048576;
+      outputf (OUTPUT_VERBOSE, "Using lmax = %lu with%s NTT which takes "
+               "about %luMB of memory\n", faststage2_params.l, s, MB);
+    }
+  }
+
   /* Print B1, B2, polynomial and x0 */
-  print_B1_B2_poly (OUTPUT_NORMAL, ECM_PP1, B1, *B1done, B2min_parm, B2min, 
+  print_B1_B2_poly (OUTPUT_NORMAL, ECM_PP1, B1, *B1done, B2min_parm, B2min,
 		    B2, 1, p, 0, 0, NULL, 0, 0);
 
   /* If we do a stage 2, print its parameters */
@@ -399,10 +399,10 @@ pp1 (mpz_t f, mpz_t p, mpz_t n, mpz_t go, double *B1done, double B1,
     {
       /* can't mix 64-bit types and mpz_t on win32 for some reason */
       outputf (OUTPUT_VERBOSE, "P = %" PRIu64 ", l = %" PRIu64 ", "
-            "s_1 = %" PRIu64 ", k = s_2 = %" PRIu64, 
+            "s_1 = %" PRIu64 ", k = s_2 = %" PRIu64,
              faststage2_params.P, faststage2_params.l,
              faststage2_params.s_1,faststage2_params.s_2);
-      outputf (OUTPUT_VERBOSE, ", m_1 = %Zd\n", 
+      outputf (OUTPUT_VERBOSE, ", m_1 = %Zd\n",
             faststage2_params.m_1);
     }
 
@@ -410,7 +410,7 @@ pp1 (mpz_t f, mpz_t p, mpz_t n, mpz_t go, double *B1done, double B1,
     {
       if (mpz_sgn (B2min_parm) >= 0)
         {
-          outputf (OUTPUT_VERBOSE, 
+          outputf (OUTPUT_VERBOSE,
             "Can't compute success probabilities for B1 <> B2min\n");
         }
       else
@@ -430,21 +430,21 @@ pp1 (mpz_t f, mpz_t p, mpz_t n, mpz_t go, double *B1done, double B1,
      that B1 <= ECM_UINT_MAX */
   if (B1 > (double) ECM_UINT_MAX)
     {
-      outputf (OUTPUT_ERROR, "Error, maximal step1 bound for P+1 is %lu\n", 
+      outputf (OUTPUT_ERROR, "Error, maximal step1 bound for P+1 is %lu\n",
                ECM_UINT_MAX);
       youpi = ECM_ERROR;
       goto clear_and_exit;
     }
 
   if (B1 > *B1done || mpz_cmp_ui (go, 1) > 0)
-    youpi = pp1_stage1 (f, a, modulus, B1, B1done, go, stop_asap, 
+    youpi = pp1_stage1 (f, a, modulus, B1, B1done, go, stop_asap,
                         chkfilename);
 
   outputf (OUTPUT_NORMAL, "Step 1 took %ldms\n", elltime (st, cputime ()));
   if (test_verbose (OUTPUT_RESVERBOSE))
     {
       mpz_t t;
-      
+
       mpz_init (t);
       mpres_get_z (t, a, modulus);
       outputf (OUTPUT_RESVERBOSE, "x=%Zd\n", t);
@@ -458,12 +458,12 @@ pp1 (mpz_t f, mpz_t p, mpz_t n, mpz_t go, double *B1done, double B1,
 
   if (stop_asap != NULL && (*stop_asap) ())
     goto clear_and_exit;
-      
+
   if (youpi == ECM_NO_FACTOR_FOUND && mpz_cmp (B2, B2min) >= 0)
     {
       if (use_ntt)
         youpi = pp1fs2_ntt (f, a, modulus, &faststage2_params, twopass);
-      else 
+      else
         youpi = pp1fs2 (f, a, modulus, &faststage2_params);
     }
 
