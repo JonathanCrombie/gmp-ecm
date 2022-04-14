@@ -184,10 +184,8 @@ if test "x$check_use_defined_cc_is_gcc" != "x" && test "x$GCC" != "xyes"; then
 fi
 
 # Now that we have decided on CC and CFLAGS, init libtool
-# Don't make a shared library by default. Enable building a shared library
-# by specifying "--enable-shared" on the ./configure command line
 LT_PREREQ([2.2.6])
-LT_INIT([disable-shared,win32-dll])
+LT_INIT([win32-dll])
 
 
 dnl Checks for typedefs, structures, and compiler characteristics.
