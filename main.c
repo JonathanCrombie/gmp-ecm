@@ -351,6 +351,58 @@ mod_from_mpq (mpz_t r, mpq_t q, mpz_t N, int verbose)
     return ret;
 }
 
+/* Read bound from string, format can be 123 or 1e6.
+   Returns 1 on sucess, 0 on error.
+ */
+static int
+read_bound_single (mpz_t B, char *arg)
+{
+  if (arg[0] == '\0')
+    return 0;
+
+  /* Check %Zd for full precision first, fall back to float for scientific. */
+  int c;
+  if (gmp_sscanf (arg, "%Zd%n", B, &c))
+    {
+      if (c > 0 && arg[c] == '\0')
+          return 1;
+    }
+  double tmp;
+  if (gmp_sscanf (arg, "%lf%n", &tmp, &c))
+    if (c > 0 && arg[c] == '\0') {
+       mpz_set_d (B, tmp);
+       return 1;
+    }
+  return 0;
+}
+
+/* Read B1 or B2 bound from argv, format can be 123, 1e6, 123-1e6, or 1e6-1e9
+   If no starting value is provided Bmin is set to default_bound.
+   Returns 1 on success, 0 on error.
+ */
+static int
+read_bound (mpz_t Bmin, mpz_t Bmax, char *arg, signed int default_bound)
+{
+  char *endptr;
+  /* Negative numbers not allowed, the only valid '-' is the split point. */
+  for (endptr = arg; *endptr != '\0' && *endptr != '-'; endptr++);
+  if (*endptr != '-')
+    {
+      mpz_set_si(Bmin, default_bound);
+      gmp_printf("No split found passing %s\n", arg);
+      return read_bound_single(Bmax, arg);
+    }
+
+  // Temporarily split to two strings.
+  (*endptr) = '\0';
+  //gmp_printf("split found passing %s and %s\n", arg, endptr+1);
+  int result = read_bound_single(Bmin, arg);
+  if (result)
+    result = read_bound_single(Bmax, endptr+1);
+  (*endptr) = '-';
+  return result;
+}
+
 /******************************************************************************
 *                                                                             *
 *                                Main program                                 *
@@ -953,6 +1005,25 @@ main (int argc, char *argv[])
 #endif
     }
   
+  /* Set first stage bound B1. argv are stored into mpz B2min and B2. */
+  int would_error = 0;
+  if (read_bound(B2min, B2, argv[1], ECM_DEFAULT_B1_DONE)) {
+      gmp_printf("Got %Zd-%Zd as B1 bounds\n", B2min, B2);
+      if (mpz_cmp_d(B2min, 0.0) < 0 || mpz_cmp_d(B2, 0.0) < 0)
+        {
+          would_error = 1;
+        }
+      else if (mpz_cmp_d(B2, MAX_B1) > 0)
+        {
+          would_error = 2;
+        }
+  } else {
+    would_error = 3;
+  }
+
+  double test_B1done = mpz_get_d(B2min);
+  double test_B1 = mpz_get_d(B2);
+
   /* set first stage bound B1 */
   B1 = strtod (argv[1], &argv[1]);
   if (*argv[1] == '-')
@@ -968,6 +1039,10 @@ main (int argc, char *argv[])
   if (B1 < 0.0 || B1done < 0.0)
     {
       fprintf (stderr, "Bound values must be positive\n");
+      if (would_error != 1) {
+        printf("Didn't error! %u | %.1f-%.1f\n", would_error, test_B1done, test_B1);
+        while (1) {;}
+      }
       exit (EXIT_FAILURE);
     }
 
@@ -975,13 +1050,40 @@ main (int argc, char *argv[])
   if (B1 > MAX_B1)
     {
       fprintf (stderr, "Too large stage 1 bound, limit is %1.0f\n", MAX_B1);
+      if (would_error != 2) {
+        printf("Didn't error! %u | %.1f-%.1f\n", would_error, test_B1done, test_B1);
+        while (1) {;}
+      }
       exit (EXIT_FAILURE);
     }
+
+  if (B1 != test_B1 || B1done != test_B1done) {
+    printf("Mismatch %.1f-%.1f vs %.1f-%.1f\n", B1done, B1, test_B1done, test_B1);
+    while (1) {;}
+  }
+
+  if (would_error) {
+      gmp_printf("Error %u but shouldn't -> %.1f-%.1f\n", would_error, B1done, B1);
+      while (1) {;}
+  }
 
   mpz_set_si (B2, ECM_DEFAULT_B2); /* compute it automatically from B1 */
   /* parse B2 or B2min-B2max */
   if (argc >= 3)
     {
+      mpz_t test_B2min, test_B2;
+      mpz_init (test_B2min);
+      mpz_init (test_B2);
+      if (read_bound(test_B2min, test_B2, argv[2], ECM_DEFAULT_B2)) {
+          would_error = 0;
+          gmp_printf("Got %Zd-%Zd as B2 bounds\n", test_B2min, test_B2);
+          /* if B2min is set, make sure it is not less than B1 */
+          if (mpz_cmp_si(test_B2min, ECM_DEFAULT_B2) != 0 &&  mpz_cmp_d (test_B2min, B1) < 0)
+            mpz_set_d (test_B2min, B1);
+      } else {
+          would_error = 1;
+      }
+
       int c;
       double d;
       char *endptr;
@@ -1005,6 +1107,10 @@ main (int argc, char *argv[])
 	    if (endptr != NULL)
 	      *(--endptr) = '-';
 	    fprintf (stderr, "Invalid B2 value: %s\n", argv[2]);
+            if (!would_error) {
+                gmp_printf("Should error but didn't -> %Zd-%Zd\n", test_B2min, test_B2);
+                while (1) {;}
+            }
 	    exit (EXIT_FAILURE);
 	  }
       }
@@ -1039,8 +1145,23 @@ main (int argc, char *argv[])
         {
           fprintf (stderr, "Error: expected positive integer(s) B2 or "
                    "B2min-B2\n");
+          if (!would_error) {
+            gmp_printf("Should error but didn't -> %Zd-%Zd\n", test_B2min, test_B2);
+            while (1) {;}
+          }
           exit (EXIT_FAILURE);
         }
+
+      if (would_error) {
+            gmp_printf("Error but shouldn't -> %Zd-%Zd\n", B2min, B2);
+            while (1) {;}
+      }
+      if (mpz_cmp(B2, test_B2) != 0 || mpz_cmp(B2min, test_B2min) != 0) {
+        gmp_printf("B2 mismatch %Zd-%Zd vs %Zd-%Zd\n", B2min, B2, test_B2min, test_B2);
+        while (1) {;}
+      }
+      mpz_clear (test_B2min);
+      mpz_clear (test_B2);
     }
 
   /* set static parameters (i.e. those that don't change during the program) */
