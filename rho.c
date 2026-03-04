@@ -633,8 +633,12 @@ prob (double B1, double B2, double N, double nr, int S, double delta)
       else
 	beta = log (B2) / log (B1);
 
-      if (beta > 1.)
-	stage2 += dickmanmu (alpha, beta, effN);
+      /* account for largest prime <= B1 */
+      stage2 -= dickmanmu (alpha, 1.0, effN);
+      stage2 += dickmanmu (alpha, beta, effN);
+      /* Can happens when B2 is very close to B1 */
+      if (stage2 < 0)
+        stage2 = 0;
     }
   brsu = 0.;
   if (S < -1)
