@@ -84,8 +84,11 @@ To make a new release:
      programs, for example to estimate the average number of curves to find
      a 20-digit prime with B1=11000 and -param 1:
      $ ./checkprob "./ecm -param 1" 31622776601683800097 11000
+      (should output 107 on average, cf entry "20 digits" of last table of [1])
+     [1] https://members.loria.fr/PZimmermann/records/ecm/params.html
      $ ./checkprob "./ecm -param 0" 3162277660168380112437259 50000 # 25d
-     and with check.sage, the following command checks the ./ecm binary
+      (should output 261 on average, cf entre "25 digits" of last table of [1])
+     and with tools/check.sage, the following command checks the ./ecm binary
      for all parametrizations (-param 0-3), with B1=11000 and B2=1873422,
      and all sigma values < 1000, and checks the prime 31622776601683800097
      is found when it should be (i.e., when the group order is (B1,B2)-smooth):
