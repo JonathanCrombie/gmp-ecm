@@ -120,7 +120,7 @@ EXTRA_DIST = test.pm1 test.pp1 test.ecm README.lib INSTALL-ecm ecm.xml  \
              test.gwnum INSTALL-gwnum \
              getprime_r.h cgbn_stage1.cu \
              test.gpuecm README.gpu c155 \
-             test_dummy.save test_prime95.save M877.save \
+             test_dummy.save test_prime95.save M877.save bsave.B100.v99 \
 	     M997.save test_Z2102.n LucasChainGenerator/README \
              LucasChainGenerator/src/LucasChainGen.h \
              LucasChainGenerator/src/LCG_macros.h
