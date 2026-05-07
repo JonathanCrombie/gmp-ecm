@@ -6,9 +6,9 @@ is not affected.
 Users should familiarize themselves with the instructions in
 "INSTALL-ecm" before attempting the procedures here.
 
-0) Download Prime 95 source files. As of June 2024, the current release is:
+0) Download Prime 95 source files. As of May 2026, the current release is:
 
-   https://www.mersenne.org/download/software/v30/30.19/p95v3019b21.source.zip
+   https://www.mersenne.org/download/software/v31/31.04/p95v3104b02.source.zip
    
    Check links appended to "https://www.mersenne.org/download/software/" for
    future Prime 95 releases.
@@ -40,7 +40,7 @@ Users should familiarize themselves with the instructions in
    For example, if the ECM and p95 folders are both in the same home folder,
    the command might look like
 
-   $ ./configure --with-gwnum=../p95v3019b20.source/gwnum
+   $ ./configure --with-gwnum=../p95v3104b02.source/gwnum
    
    Note that you may also need to specify "--with-gmp=<gmpdir>" if
    "configure" has trouble finding GMP.
@@ -73,7 +73,7 @@ Users should familiarize themselves with the instructions in
        with 'n' or '(b2^n2)' < 10^10. Also, k must be a positive integer with
        1 <= k < 2^53, and c must be a non-zero integer with |c| < 2^23.
        Note that the k upper limit of 2^53-1 is taken from the file
-       p95v3019b21.source/gwnum/gwnum.c, line 2181:
+       p95v3104b02.source/gwnum/gwnum.c, line 2182:
        "if (k > 9007199254740991.0) return (GWERROR_K_TOO_LARGE);"
        and is subject to change by Woltman.
    (2) For integer-character-only input strings N, GMP-ECM may detect if
@@ -88,7 +88,7 @@ Users should familiarize themselves with the instructions in
        use the kbnc form 2^4882+1. Here is some sample output to illustrate:
        
 $ echo "(2^2441+2^1221+1)/5" | ./ecm -sigma 0:8796261600422429213 -go 11685787 12e5 33e6
-GMP-ECM 7.0.6 [configured with GMP 6.3.0, GWNUM 30.19, --enable-asm-redc, --enable-assert] [ECM]
+GMP-ECM 7.0.7 [configured with GMP 6.3.0, GWNUM 31.4, --enable-asm-redc, --enable-assert] [ECM]
 Due to incompatible licenses, this binary file must not be distributed.
 Input number is (2^2441+2^1221+1)/5 (735 digits)
 Using B1=1200000, B2=33000000, polynomial x^2, sigma=0:8796261600422429213
@@ -155,7 +155,8 @@ Step 2 took 525ms
    for the generalized Fermat number 6^2048+1:
 
 $ echo "(6^(2^11)+1)/(96479889653761)" | ./ecm -force-no-gwnum -sigma 0:6685190033435505716 21e6 9e9
-...Input number is (6^(2^11)+1)/(96479889653761) (1580 digits)
+...
+Input number is (6^(2^11)+1)/(96479889653761) (1580 digits)
 Using B1=21000000, B2=9000000000, polynomial Dickson(6), sigma=0:6685190033435505716
 Using Lucas chain codes
 Step 1 took 1299300ms
@@ -165,7 +166,8 @@ Found prime factor of 38 digits: 27235071532927521153002936160735956993
 Composite cofactor ((6^(2^11)+1)/(96479889653761))/27235071532927521153002936160735956993 has 1543 digits
 
 $ echo "(6^(2^11)+1)/(96479889653761)" | ./ecm -sigma 0:6685190033435505716 21e6 9e9
-...Using gwnum_ecmStage1(1, 6, 2048, 1, 21000000, 1)
+...
+Using gwnum fft's, b^n+c form: 6^2048 + 1
 Step 1 took 145443ms
 Step 2 took 42417ms
 ********** Factor found in step 2: 27235071532927521153002936160735956993
