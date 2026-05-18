@@ -117,7 +117,7 @@ EXTRA_DIST = test.pm1 test.pp1 test.ecm README.lib INSTALL-ecm ecm.xml  \
              powerpc64/params.h powerpc32/params.h sparc64/params.h     \
              hppa/params.h mips/params.h x86_64/params.h         \
              generic/params.h testlong.pp1 testlong.pm1 testlong.ecm \
-             test.gwnum INSTALL-gwnum \
+             test.gwnum INSTALL-gwnum gw_ecmstag1.h \
              getprime_r.h cgbn_stage1.cu \
              test.gpuecm README.gpu c155 \
              test_dummy.save test_prime95.save M877.save bsave.B100.v99 \
