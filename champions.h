@@ -10,5 +10,7 @@ static char *champion_url[3] =
 {"http://maths-people.anu.edu.au/~brent/ftp/champs.txt",
  "http://www.loria.fr/~zimmerma/records/Pminus1.html",
  "http://www.loria.fr/~zimmerma/records/Pplus1.html"};
+/* Since Richard Brent does not update any more his web page, also visit
+   https://members.loria.fr/PZimmermann/records/top50.html for ECM */
 /* minimal number of digits to enter the champions table for ECM, P-1, P+1 */
-static unsigned int champion_digits[3] = { 75, 58, 48 };
+static unsigned int champion_digits[3] = { 75, 59, 48 };
