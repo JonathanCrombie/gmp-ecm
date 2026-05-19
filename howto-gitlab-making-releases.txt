@@ -11,16 +11,8 @@ having the same name as the existing tar.gz.
 
 Release title: 6.0.1
 
-In the "Release notes" window, click on attach a file.
-
-In "Release asset", enter the url of the file
-
-https://gitlab.inria.fr/zimmerma/ecm/uploads/70afcfac2a7a6a762a08eda0c551fafd/ecm-6.0.1.tar.gz
-
-where "70afcfac2a7a6a762a08eda0c551fafd" is copied from the link you see
-after attaching the release file above.
-
-and as "Link title" enter "release tarball".
+In the "Release notes" window, click on attach a file,
+and attach ecm-6.0.1.tar.gz.
 
 Click on create release.
 
