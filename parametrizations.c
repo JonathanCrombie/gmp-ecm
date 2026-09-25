@@ -433,8 +433,8 @@ get_curve_from_random_parameter (mpz_t f, mpres_t A, mpres_t x, mpz_t sigma,
      to avoid an infinite loop in corner cases (for example with -param 1,
      there is no valid sigma for n=3, see
      https://gitlab.inria.fr/zimmerma/ecm/-/issues/21876) */
-  unsigned long bitsize = (param == ECM_PARAM_BATCH_SQUARE ||
-                           param == ECM_PARAM_BATCH_32BITS_D) ? 32 : 64;
+  /* Param 3 retains d=sigma/2^32, but its numerator now spans 64 bits. */
+  unsigned long bitsize = param == ECM_PARAM_BATCH_SQUARE ? 32 : 64;
   mpz_urandomb (sigma, rng, bitsize);
   for (int i = 0; ret == ECM_ERROR && i < 10; i++)
     {
