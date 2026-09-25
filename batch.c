@@ -313,7 +313,15 @@ ecm_stage1_batch (mpz_t f, mpres_t x, mpres_t A, mpmod_t n, double B1,
       mpz_add_ui (u, u, 2);
       mpz_mul_2exp (u, u, GMP_NUMB_BITS - 2);
       mpres_set_z_for_gcd (u, u, n); /* reduces u mod n */
-      if (mpz_size (u) > 1)
+      /* A wide param-3 sigma can exceed the one-limb shortcut. Select
+         the existing general-d ladder locally; the curve identity and
+         denominator 2^32 are unchanged outside this function. */
+      if (mpz_size (u) > 1 && batch == ECM_PARAM_BATCH_32BITS_D)
+        {
+          batch = ECM_PARAM_BATCH_2;
+          mpres_init (d_2, n);
+        }
+      else if (mpz_size (u) > 1)
         {
           mpres_get_z (u, A, n);
           outputf (OUTPUT_ERROR, "Error, with -param %d, sigma should be < 2^32\n", batch);
@@ -321,7 +329,7 @@ ecm_stage1_batch (mpz_t f, mpres_t x, mpres_t A, mpmod_t n, double B1,
         }
       d_1 = mpz_getlimbn (u, 0);
     }
-  else
+  if (batch == ECM_PARAM_BATCH_2)
     {
       /* b = (A0+2)*B/4, where B=2^(k*GMP_NUMB_BITS)
          for MODMULN or REDC, B=2^GMP_NUMB_BITS for batch1,
