@@ -525,8 +525,8 @@ gw_ecm_stage1 (mpz_t f, curve *P, mpmod_t modulus,
     else
       mpz_sub_ui (tmp, tmp, (gw_c * -1));
 
-    /* kbnc_size = bits per word * # of whole words required to hold k*b^n+c */
-    kbnc_size = 8*sizeof(mp_size_t)*(tmp->_mp_size); 
+    /* Use the limb width, not the width of the mp_size_t limb counter. */
+    kbnc_size = GMP_NUMB_BITS * ABSIZ(tmp);
     ASSERT_ALWAYS ( (unsigned long)tmp_bitsize >= kbnc_size );
     mpz_clear (tmp);
 
@@ -545,7 +545,7 @@ gw_ecm_stage1 (mpz_t f, curve *P, mpmod_t modulus,
     outputf (OUTPUT_NORMAL, 
            "Using gwnum fft's, generic (non-kbnc) form\n");
 
-     kbnc_size = 8*sizeof(mp_size_t)*ABSIZ(modulus->orig_modulus) + 64; /* One extra 64-bit word per G. Woltman */
+     kbnc_size = GMP_NUMB_BITS * ABSIZ(modulus->orig_modulus) + 64; /* One extra 64-bit word per G. Woltman */
      mpz_init2 (gw_x, kbnc_size);
      mpz_init2 (gw_z, kbnc_size);
      mpres_init (gw_A, modulus);
