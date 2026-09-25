@@ -1897,7 +1897,9 @@ ecm (mpz_t f, mpz_t x, mpz_t y, int param, mpz_t sigma, mpz_t n, mpz_t go,
           return ECM_ERROR;
         }
 
-      if (!ECM_IS_DEFAULT_B1_DONE(*B1done) && *B1done < B1)
+      /* Param 3 continues from its saved point with ordinary stage 1 below. */
+      if (param != ECM_PARAM_BATCH_32BITS_D &&
+          !ECM_IS_DEFAULT_B1_DONE(*B1done) && *B1done < B1)
         {
           outputf (OUTPUT_ERROR, "Error, cannot resume with param %d, except " 
 		                 "for doing only stage 2\n", param);
@@ -1953,7 +1955,10 @@ ecm (mpz_t f, mpz_t x, mpz_t y, int param, mpz_t sigma, mpz_t n, mpz_t go,
   mpres_init (P.A, modulus);
 
   /* In resume case, set (P.x,P.y) from x. */
-  int resume = mpz_cmp_ui (x, 0);
+  /* A completed param-3 save can have x=0; do not replace it with x0=2. */
+  int resume = mpz_cmp_ui (x, 0) ||
+               (param == ECM_PARAM_BATCH_32BITS_D &&
+                !ECM_IS_DEFAULT_B1_DONE(*B1done));
   if (resume)
   {
     /* Call get_curve_from_param0() before setting P.x otherwise it would
@@ -2241,7 +2246,11 @@ ecm (mpz_t f, mpz_t x, mpz_t y, int param, mpz_t sigma, mpz_t n, mpz_t go,
 
   if (B1 > *B1done || mpz_cmp_ui (go, 1) > 0)
     {
-        if (IS_BATCH_MODE(param))
+        /* The batch ladder assumes its base point has x=2. For a saved
+           param-3 point, ordinary stage 1 applies only the prime powers
+           above B1done, preserving the curve and the work already done. */
+        if (IS_BATCH_MODE(param) &&
+            (param != ECM_PARAM_BATCH_32BITS_D || ECM_IS_DEFAULT_B1_DONE(*B1done)))
         /* FIXME: go, stop_asap and chkfilename are ignored in batch mode */
 	    youpi = ecm_stage1_batch (f, P.x, P.A, modulus, B1, B1done, 
 				      param, batch_s);
