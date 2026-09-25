@@ -28,6 +28,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #include "cgbn_stage1.h"
 
 #include <cassert>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
@@ -241,6 +242,33 @@ class curve_t {
     }
   }
 
+  // Exact high-word multiply/reduce when fewer than 33 spare bits exist.
+  // For shift=bitlength(N)-64, the host supplies floor(2^96/(top64(N)+1)).
+  // Truncating the operand and reciprocal only underestimates the quotient;
+  // the estimate is at most two low. The difference is <3N, fits within
+  // CARRY_BITS, and needs at most two subtractions. Product carries cancel.
+  __device__ FORCE_INLINE void mul_ui32_mod(bn_t &out, const bn_t &r,
+          uint32_t m, const bn_t &modulus, int32_t shift, uint64_t reciprocal) {
+    bn_t qn;
+    uint32_t lo = cgbn_extract_bits_ui32(_env, r, shift > 0 ? shift : 0, 32);
+    uint32_t hi = cgbn_extract_bits_ui32(_env, r, shift > 0 ? shift + 32 : 32, 32);
+    if (shift < 0) {
+      uint64_t top = (((uint64_t)hi << 32) | lo) << -shift;
+      lo = (uint32_t)top;
+      hi = (uint32_t)(top >> 32);
+    }
+    uint64_t product_top = (uint64_t)hi * m + __umulhi(lo, m);
+    uint32_t qhat = (uint32_t)__umul64hi(product_top, reciprocal);
+    cgbn_mul_ui32(_env, out, r, m);
+    cgbn_mul_ui32(_env, qn, modulus, qhat);
+    cgbn_sub(_env, out, out, qn);
+    if (cgbn_compare(_env, out, modulus) >= 0) {
+      cgbn_sub(_env, out, out, modulus);
+      if (cgbn_compare(_env, out, modulus) >= 0)
+        cgbn_sub(_env, out, out, modulus);
+    }
+  }
+
   /**
    * Compute simultaneously
    * (q : u) <- [2](q : u)
@@ -248,10 +276,12 @@ class curve_t {
    * A second implementation previously existed in cudakernel_default.cu
    * See dup_add_batch1 in batch.c
    */
+  template<bool wide_sigma, bool lazy_sigma>
   __device__ FORCE_INLINE void double_add_v2(
           bn_t &q, bn_t &u,
           bn_t &w, bn_t &v,
           uint32_t d,
+          uint32_t d_hi, int32_t modulus_shift, uint64_t reciprocal,
           const bn_t &modulus,
           const uint32_t np0) {
     // q = xA = aX
@@ -315,12 +345,31 @@ class curve_t {
     special_mult_ui32(dK, d, modulus, np0); // dK = K*d
         assert_normalized(dK, modulus);
 
+    // sigma=lo+2^32*hi, so K*sigma/2^32 = K*lo/2^32 + K*hi mod N.
+    // The 32-bit specialization retains the original arithmetic verbatim.
+    if (wide_sigma) {
+      bn_t high;
+      if (lazy_sigma)
+        cgbn_mul_ui32(_env, high, K, d_hi);
+      else
+        mul_ui32_mod(high, K, d_hi, modulus, modulus_shift, reciprocal);
+      cgbn_add(_env, dK, dK, high);
+      if (!lazy_sigma)
+        normalize_addition(dK, modulus);
+    }
+
     cgbn_add(_env, u, BB, dK); // BB + dK
-    normalize_addition(u, modulus);
+    // With 33 spare bits, u < N*(2^32+1) < R. Since K<N, the next
+    // Montgomery multiplication returns <2N and its usual subtraction
+    // suffices. Never defer these reductions for the 32-bit specialization.
+    if (!lazy_sigma)
+      normalize_addition(u, modulus);
     if (VERIFY_NORMALIZED) {
         assert_normalized(K, modulus);
-        assert_normalized(dK, modulus);
-        assert_normalized(u, modulus);
+        if (!lazy_sigma) {
+          assert_normalized(dK, modulus);
+          assert_normalized(u, modulus);
+        }
     }
 
     // u = aZ is finalized
@@ -357,7 +406,7 @@ class curve_t {
 /**
  * Double-and-add, index decreasing algorithm.
  */
-template<class params>
+template<class params, bool wide_sigma, bool lazy_sigma>
 __global__ void kernel_double_add(
         cgbn_error_report_t *report,
         uint64_t s_bits,
@@ -366,8 +415,8 @@ __global__ void kernel_double_add(
         uint32_t *gpu_s_bits,
         uint32_t *data,
         uint32_t count,
-        uint32_t sigma_0,
-        uint32_t np0
+        uint64_t sigma_0,
+        uint32_t np0, int32_t modulus_shift, uint64_t reciprocal
         ) {
   // decode an instance_i number from the blockIdx and threadIdx
   int32_t instance_i = (blockIdx.x*blockDim.x + threadIdx.x)/params::TPI;
@@ -410,7 +459,8 @@ __global__ void kernel_double_add(
      P_b = (bX, bZ) contains 2P */
 
   // d = (sigma / 2^32) mod N BUT 2^32 handled by special_mult_ui32
-  uint32_t d = sigma_0 + instance_i;
+  uint32_t d = (uint32_t)(sigma_0 + instance_i);
+  uint32_t d_hi = (uint32_t)((sigma_0 + instance_i) >> 32);
 
   int swapped = 0;
   for (uint64_t b = s_bits_start; b < s_bits_start + s_bits_interval; b++) {
@@ -424,7 +474,8 @@ __global__ void kernel_double_add(
         cgbn_swap(curve._env, aX, bX);
         cgbn_swap(curve._env, aZ, bZ);
     }
-    curve.double_add_v2(aX, aZ, bX, bZ, d, modulus, np0);
+    curve.template double_add_v2<wide_sigma, lazy_sigma>(aX, aZ, bX, bZ, d, d_hi,
+                                            modulus_shift, reciprocal, modulus, np0);
   }
 
   if (swapped) {
@@ -452,6 +503,18 @@ __global__ void kernel_double_add(
   }
 }
 
+
+typedef void (*ecm_gpu_kernel_t)(cgbn_error_report_t *, uint64_t, uint64_t, uint64_t,
+        uint32_t *, uint32_t *, uint32_t, uint64_t, uint32_t, int32_t, uint64_t);
+
+template<class params>
+static ecm_gpu_kernel_t select_kernel(bool wide_sigma, size_t input_bits) {
+  if (!wide_sigma)
+    return kernel_double_add<params, false, false>;
+  if (params::BITS >= input_bits + 33)
+    return kernel_double_add<params, true, true>;
+  return kernel_double_add<params, true, false>;
+}
 
 static
 int findfactor(mpz_t factor, const mpz_t N, const mpz_t x_final, const mpz_t z_final) {
@@ -519,7 +582,7 @@ uint32_t* allocate_and_set_s_bits(const mpz_t s, uint64_t *nbits) {
 
 static
 uint32_t* set_p_2p(const mpz_t N,
-                   uint32_t curves, uint32_t sigma,
+                   uint32_t curves, uint64_t sigma,
                    uint32_t BITS, size_t *data_size) {
   /**
    * Store 5 numbers per curve:
@@ -534,11 +597,11 @@ uint32_t* set_p_2p(const mpz_t N,
   uint32_t *data = (uint32_t*) malloc(*data_size);
   uint32_t *datum = data;
 
-  mpz_t x;
-  mpz_init(x);
+  mpz_t x, coefficient;
+  mpz_inits(x, coefficient, NULL);
   for(int index = 0; index < curves; index++) {
       // d = (sigma / 2^32) mod N BUT 2^32 handled by special_mul_ui32
-      uint32_t d = sigma + index;
+      uint64_t d = sigma + index;
 
       // Modulo (N)
       from_mpz(N, datum + 0 * limbs_per, BITS/32);
@@ -557,17 +620,18 @@ uint32_t* set_p_2p(const mpz_t N,
       // d = sigma * mod_inverse(2 ** 32, N)
       mpz_ui_pow_ui(x, 2, 32);
       mpz_invert(x, x, N);
-      mpz_mul_ui(x, x, d);
+      mpz_import(coefficient, 1, 1, sizeof(d), 0, 0, &d);
+      mpz_mul(x, x, coefficient);
       // P2_x = 64 * d + 8;
       mpz_mul_ui(x, x, 64);
       mpz_add_ui(x, x, 8);
       mpz_mod(x, x, N);
 
-      outputf (OUTPUT_TRACE, "sigma %d => P2_y: %Zd\n", d, x);
+      outputf (OUTPUT_TRACE, "sigma %" PRIu64 " => P2_y: %Zd\n", d, x);
       from_mpz(x, datum + 4 * limbs_per, BITS/32);
       datum += 5 * limbs_per;
   }
-  mpz_clear(x);
+  mpz_clears(x, coefficient, NULL);
   return data;
 }
 
@@ -576,7 +640,7 @@ static
 int process_results(mpz_t *factors, int *array_found,
                     const mpz_t N,
                     const uint32_t *data, uint32_t cgbn_bits,
-                    int curves, uint32_t sigma) {
+                    int curves, uint64_t sigma) {
   mpz_t x_final, z_final, modulo;
   mpz_init(modulo);
   mpz_init(x_final);
@@ -624,8 +688,8 @@ int process_results(mpz_t *factors, int *array_found,
     array_found[i] = findfactor(factors[i], N, x_final, z_final);
     if (array_found[i] != ECM_NO_FACTOR_FOUND) {
       youpi = array_found[i];
-      outputf (OUTPUT_NORMAL, "GPU: factor %Zd found in Step 1 with curve %ld (-sigma %d:%lu)\n",
-          factors[i], i, ECM_PARAM_BATCH_32BITS_D, sigma + i);
+      outputf (OUTPUT_NORMAL, "GPU: factor %Zd found in Step 1 with curve %ld (-sigma %d:%" PRIu64 ")\n",
+          factors[i], i, ECM_PARAM_BATCH_32BITS_D, sigma + (uint64_t)i);
     }
   }
 
@@ -658,11 +722,12 @@ int print_nth_batch(int n)
 
 int cgbn_ecm_stage1(mpz_t *factors, int *array_found,
              const mpz_t N, const mpz_t s,
-             uint32_t curves, uint32_t sigma,
+             uint32_t curves, uint64_t sigma,
              float *gputime, int verbose)
 {
   assert( sigma > 0 );
-  assert( ((uint64_t) sigma + curves) <= 0xFFFFFFFF ); // no overflow
+  assert(curves > 0 && sigma <= UINT64_MAX - (curves - 1));
+  const bool wide_sigma = sigma + (curves - 1) > UINT32_MAX;
 
   uint64_t s_num_bits;
   uint32_t *s_bits = allocate_and_set_s_bits(s, &s_num_bits);
@@ -751,8 +816,7 @@ int cgbn_ecm_stage1(mpz_t *factors, int *array_found,
 #endif
 
   /* Pointer to CUDA kernel. */
-  void(*kernel)(cgbn_error_report_t *, uint64_t, uint64_t, uint64_t,
-        uint32_t*, uint32_t*, uint32_t, uint32_t, uint32_t) = NULL;
+  ecm_gpu_kernel_t kernel = NULL;
 
   size_t n_log2 = mpz_sizeinbase(N, 2);
   for (int k_i = 0; k_i < available_kernels.size(); k_i++) {
@@ -765,32 +829,32 @@ int cgbn_ecm_stage1(mpz_t *factors, int *array_found,
       /* TODO: return kernelAttr and validate maxThreadsPerBlock. */
       if (BITS == cgbn_params_small::BITS) {
         TPI = cgbn_params_small::TPI;
-        kernel = kernel_double_add<cgbn_params_small>;
+        kernel = select_kernel<cgbn_params_small>(wide_sigma, n_log2);
       } else if (BITS == cgbn_params_medium::BITS) {
         TPI = cgbn_params_medium::TPI;
-        kernel = kernel_double_add<cgbn_params_medium>;
+        kernel = select_kernel<cgbn_params_medium>(wide_sigma, n_log2);
 #ifndef IS_DEV_BUILD
       } else if (BITS == cgbn_params_1536::BITS) {
         TPI = cgbn_params_1536::TPI;
-        kernel = kernel_double_add<cgbn_params_1536>;
+        kernel = select_kernel<cgbn_params_1536>(wide_sigma, n_log2);
       } else if (BITS == cgbn_params_2048::BITS) {
         TPI = cgbn_params_2048::TPI;
-        kernel = kernel_double_add<cgbn_params_2048>;
+        kernel = select_kernel<cgbn_params_2048>(wide_sigma, n_log2);
       } else if (BITS == cgbn_params_3072::BITS) {
         TPI = cgbn_params_3072::TPI;
-        kernel = kernel_double_add<cgbn_params_3072>;
+        kernel = select_kernel<cgbn_params_3072>(wide_sigma, n_log2);
       } else if (BITS == cgbn_params_4096::BITS) {
         TPI = cgbn_params_4096::TPI;
-        kernel = kernel_double_add<cgbn_params_4096>;
+        kernel = select_kernel<cgbn_params_4096>(wide_sigma, n_log2);
       } else if (BITS == cgbn_params_6144::BITS) {
         TPI = cgbn_params_6144::TPI;
-        kernel = kernel_double_add<cgbn_params_6144>;
+        kernel = select_kernel<cgbn_params_6144>(wide_sigma, n_log2);
       } else if (BITS == cgbn_params_8192::BITS) {
         TPI = cgbn_params_8192::TPI;
-        kernel = kernel_double_add<cgbn_params_8192>;
+        kernel = select_kernel<cgbn_params_8192>(wide_sigma, n_log2);
       } else if (BITS == cgbn_params_12288::BITS) {
         TPI = cgbn_params_12288::TPI;
-        kernel = kernel_double_add<cgbn_params_12288>;
+        kernel = select_kernel<cgbn_params_12288>(wide_sigma, n_log2);
 #endif
       } else {
         outputf (OUTPUT_ERROR, "CGBN kernel not found for %d bits\n", BITS);
@@ -809,7 +873,7 @@ int cgbn_ecm_stage1(mpz_t *factors, int *array_found,
       return ECM_ERROR;
     }
 
-  kernel_info((const void*)kernel_double_add<cgbn_params_medium>, verbose);
+  kernel_info((const void*)select_kernel<cgbn_params_medium>(wide_sigma, n_log2), verbose);
 
   /* Alert that recompiling with a smaller kernel would likely improve speed */
   {
@@ -835,6 +899,22 @@ int cgbn_ecm_stage1(mpz_t *factors, int *array_found,
 
   /* np0 is -(N^-1 mod 2**32), used for montgomery representation */
   uint32_t np0 = find_np0(N);
+  int32_t modulus_shift = (int32_t)n_log2 - 64;
+  uint64_t reciprocal = 0;
+  if (wide_sigma && BITS < n_log2 + 33) {
+    mpz_t top, numerator;
+    mpz_inits(top, numerator, NULL);
+    if (modulus_shift >= 0)
+      mpz_fdiv_q_2exp(top, N, modulus_shift);
+    else
+      mpz_mul_2exp(top, N, -modulus_shift);
+    mpz_add_ui(top, top, 1);
+    mpz_set_ui(numerator, 1);
+    mpz_mul_2exp(numerator, numerator, 96);
+    mpz_fdiv_q(top, numerator, top);
+    mpz_export(&reciprocal, NULL, 1, sizeof(reciprocal), 0, 0, top);
+    mpz_clears(top, numerator, NULL);
+  }
 
   // Copy data
   outputf (OUTPUT_VERBOSE, "Copying %'lu bytes of curves data to GPU\n", data_size);
@@ -878,7 +958,8 @@ int cgbn_ecm_stage1(mpz_t *factors, int *array_found,
 
     /* Call CUDA Kernel. */
     assert (kernel != NULL);
-    (*kernel)<<<BLOCK_COUNT, TPB>>>(report, s_num_bits, s_partial, batch_size, gpu_s_bits, gpu_data, curves, sigma, np0);
+    (*kernel)<<<BLOCK_COUNT, TPB>>>(report, s_num_bits, s_partial, batch_size, gpu_s_bits, gpu_data, curves, sigma, np0,
+                                  modulus_shift, reciprocal);
 
     s_partial += batch_size;
     batches_complete++;
