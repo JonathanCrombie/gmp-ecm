@@ -7,8 +7,6 @@
 #include "cgbn_stage1.h"
 
 
-#define TWO32 4294967296 /* 2^32 */
-
 /* Try to reduce all composite factors to primes.
  * This can be hard if factors overlap e.g. (a*b, a*c*d, b*c)
  */
@@ -142,11 +140,12 @@ void reducefactors (mpz_t *factors, int *array_found, unsigned int nb_curves)
 
 
 static void
-A_from_sigma (mpz_t A, unsigned int sigma, mpz_t n)
+A_from_sigma (mpz_t A, uint64_t sigma, mpz_t n)
 {
   mpz_t tmp;
   int i;
-  mpz_init_set_ui (tmp, sigma);
+  mpz_init (tmp);
+  mpz_set_uint64 (tmp, sigma);
   /* Compute d = sigma/2^32 */
   for (i = 0; i < 32; i++)
     {
@@ -171,7 +170,7 @@ gpu_ecm (mpz_t f, const ecm_params params, ecm_params mutable_params, mpz_t n, d
   int factor_found = ECM_NO_FACTOR_FOUND;
   long st, st2;
   long tottime; /* at the end, total time in ms */
-  unsigned int firstsigma_ui;
+  uint64_t firstsigma_ui;
   float gputime = 0.0;
   mpz_t tmp_A;
   mpz_t *factors = NULL; /* Contains either a factor of n either end-of-stage-1
@@ -309,24 +308,45 @@ gpu_ecm (mpz_t f, const ecm_params params, ecm_params mutable_params, mpz_t n, d
   nb_curves = params->gpu_number_of_curves;
 
   ASSERT (params->sigma_is_A == 0);
-  if (mpz_sgn (params->sigma) == 0)
-    {
-      /* generate random value in [2, 2^32 - nb_curves - 1] */
-      mpz_set_ui (mutable_params->sigma,
-                  (get_random_ul () % (TWO32 - 2 - nb_curves)) + 2);
-    }
-  else /* sigma should be in [2, 2^32-nb_curves] */
-    {
-      if (mpz_cmp_ui (params->sigma, 2) < 0 ||
-          mpz_cmp_ui (params->sigma, TWO32 - nb_curves) >= 0)
+  {
+    mpz_t limit;
+    mpz_init_set_ui (limit, 1);
+    mpz_mul_2exp (limit, limit, 64);
+    /* Last sigma may be UINT64_MAX, but the curve range must not wrap. */
+    mpz_sub_ui (limit, limit, nb_curves);
+    if (mpz_sgn (params->sigma) == 0)
+      {
+        init_randstate (mutable_params->rng);
+        mpz_sub_ui (limit, limit, 1);
+        mpz_urandomm (mutable_params->sigma, mutable_params->rng, limit);
+        mpz_add_ui (mutable_params->sigma, mutable_params->sigma, 2);
+      }
+    else if (mpz_cmp_ui (params->sigma, 2) < 0 ||
+             mpz_cmp (params->sigma, limit) > 0)
         {
-          outputf (OUTPUT_ERROR, "GPU: Error, sigma should be in [2,%lu]\n",
-                                 TWO32 - nb_curves - 1);
+          outputf (OUTPUT_ERROR, "GPU: Error, sigma should be in [2,%Zd]\n", limit);
+          mpz_clear (limit);
           youpi = ECM_ERROR;
           goto end_gpu_ecm;
         }
-    }
-  firstsigma_ui = mpz_get_ui (params->sigma);
+    mpz_clear (limit);
+  }
+  /* Do not truncate through unsigned long, which is 32 bits on Windows. */
+  firstsigma_ui = 0;
+  mpz_export (&firstsigma_ui, NULL, 1, sizeof (firstsigma_ui), 0, 0, params->sigma);
+  /* Newly admitted values include singular curves such as sigma=2^32.
+     Validate wide batches with the same curve constructor as the CPU. */
+  if (firstsigma_ui + (nb_curves - 1) > UINT32_MAX)
+    for (i = 0; i < nb_curves; i++)
+      {
+        mpz_set_uint64 (tmp_A, firstsigma_ui + i);
+        if (get_curve_from_param3 (P.A, P.x, tmp_A, modulus) != ECM_NO_FACTOR_FOUND)
+          {
+            outputf (OUTPUT_ERROR, "GPU: Error, invalid parametrization 3 sigma %Zd\n", tmp_A);
+            youpi = ECM_ERROR;
+            goto end_gpu_ecm;
+          }
+      }
 
   print_B1_B2_poly (OUTPUT_NORMAL, ECM_ECM, B1, params->B1done,  params->B2min, B2min,
                     B2, params->S, params->sigma, params->sigma_is_A, ECM_EC_TYPE_MONTGOMERY,
@@ -471,7 +491,7 @@ gpu_ecm (mpz_t f, const ecm_params params, ecm_params mutable_params, mpz_t n, d
         {
           array_found[i] = youpi;
           outputf (OUTPUT_NORMAL, "GPU: factor %Zd found in Step 2 with"
-                " curve %u (-sigma 3:%u)\n", factors[i], i, i+firstsigma_ui);
+                " curve %u (-sigma 3:%" PRIu64 ")\n", factors[i], i, i+firstsigma_ui);
           /* factor_found corresponds to the first factor found */
           if (factor_found == ECM_NO_FACTOR_FOUND)
             factor_found = youpi;
