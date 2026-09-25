@@ -21,6 +21,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "ecm-impl.h"
 #include "ecm-ecm.h"
 
@@ -72,7 +73,7 @@ nb_digits (const mpz_t n)
 */
 
 int
-read_number (mpcandi_t *n, FILE *fd, int primetest)
+read_number (mpcandi_t *n, FILE *fd, int primetest, int allow_brent)
 {
   int c;
 
@@ -93,7 +94,7 @@ new_line:
     return 0;
 
   ungetc (c, fd);
-  if (!eval (n, fd, primetest))
+  if (!eval (n, fd, primetest, allow_brent))
     goto new_line;
 
 #if 0
@@ -118,6 +119,20 @@ new_line:
 #endif
 
   return 1;
+}
+
+void
+print_brent_source (const mpcandi_t *n, FILE *out)
+{
+  const char *exponent, *sign;
+  if (n->brent_label[0] == 0) return;
+  exponent = strchr (n->brent_label, ' ') + 1;
+  sign = exponent + strcspn (exponent, "+-");
+  fprintf (out, "Source number: %.*s^%.*s %c 1",
+           (int) (exponent - n->brent_label - 1), n->brent_label,
+           (int) (sign - exponent), exponent, *sign);
+  if (sign[1]) fprintf (out, " (%c)", sign[1]);
+  fputc ('\n', out);
 }
 
 int
@@ -162,6 +177,7 @@ process_newfactor (mpz_t g, int result, mpcandi_t *n, int method,
         
         if (verbose > 0)
             printf ("\n");
+        print_brent_source (n, verbose > 0 ? stdout : stderr);
       }
 
   /* Complain about non-proper factors (0, negative) */

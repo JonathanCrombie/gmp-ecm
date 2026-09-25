@@ -163,10 +163,12 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
       have_b1, have_checksum, have_qx;
   unsigned int saved_checksum;
   char tag[16];
+  char label[sizeof (n->brent_label)];
   mpz_t z;
   
   while (!feof (fd))
     {
+      label[0] = 0;
       /* Ignore empty lines */
       if (facceptnl (fd))
         continue;
@@ -269,13 +271,27 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
             }
           else if (strcmp (tag, "COMMENT") == 0)
             {
-              freadstrn (fd, comment, ';', 255);
+              char value[255], *text = value;
+              freadstrn (fd, value, ';', sizeof (value));
+              if (strncmp (value, "LABEL=", 6) == 0)
+                {
+                  const char *end;
+                  char *separator = strstr (value + 6, " | ");
+                  if (separator != NULL) { *separator = 0; text = separator + 3; }
+                  else text = "";
+                  if (label[0] || parse_brent_label (label, value + 6, &end) != 1 || *end)
+                    {
+                      fprintf (stderr, "Resume warning, invalid or duplicate Brent LABEL in COMMENT\n");
+                      goto error;
+                    }
+                }
+              if (comment != NULL) strcpy (comment, text);
             }
           else if (strcmp (tag, "N") == 0)
             {
               /*mpz_inp_str (n, fd, 0);*/
 	      /* we want to "maintain" any expressions, which were possibly stored in the file for N */
-              have_n = read_number (n, fd, 0);
+              have_n = read_number (n, fd, 0, 0);
             }
           else if (strcmp (tag, "SIGMA") == 0)
             {
@@ -332,6 +348,7 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
         }
       
       /* Finished reading tags */
+      if (have_n) strcpy (n->brent_label, label);
       
       /* Handle Prime95 v22 lines. These have no METHOD=ECM field and
          QX= instead of X= */
@@ -548,8 +565,18 @@ write_resumefile_line (FILE *file, int method, double B1, const mpz_t sigma,
       fprintf (file, " WHO=%.233s@%.32s;", uname, mname);
     }
 
-  if (comment[0] != 0)
-    fprintf (file, " COMMENT=%.255s;", comment);
+  /* COMMENT is understood by original readers; N and its checksum stay numeric
+     for Brent input. The complete value must fit their 254-byte limit. */
+  if (n->brent_label[0])
+    {
+      size_t length = strlen (n->brent_label) + 6;
+      fprintf (file, " COMMENT=LABEL=%s", n->brent_label);
+      if (comment[0] && length + 3 < 254)
+        fprintf (file, " | %.*s", (int) (254 - length - 3), comment);
+      fputc (';', file);
+    }
+  else if (comment[0] != 0)
+    fprintf (file, " COMMENT=%.254s;", comment);
   
   t = time (NULL);
   strncpy (text, ctime (&t), 255);

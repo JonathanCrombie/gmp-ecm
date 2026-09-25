@@ -49,6 +49,7 @@ typedef struct
 #endif
   char *cpExpr;		/* if non-NULL, then this is a "simpler" expression than the 
 			   decimal output of n */
+  char brent_label[249]; /* Canonical base exponent[+-][L|M]; COMMENT has 254 bytes including LABEL=. */
   mpz_t n;		/* the cofactor candidate currently being used to find factors from */
   unsigned ndigits;	/* the number of digits (decimal) in n */
   unsigned nexprlen;	/* strlen of expression, 0 if there is NO expression */
@@ -69,7 +70,8 @@ typedef struct
 
 /* auxi.c */
 unsigned int nb_digits  (const mpz_t);
-int read_number (mpcandi_t*, FILE*, int);
+int read_number (mpcandi_t*, FILE*, int, int);
+void print_brent_source (const mpcandi_t *, FILE *);
 int process_newfactor (mpz_t, int, mpcandi_t*, int, int, int, unsigned int*, 
                        int*, mpz_t, FILE*, int, int);
 
@@ -133,7 +135,8 @@ int kbnc_str (double *k, unsigned long *b, unsigned long *n, signed long *c,
               char *z, mpz_t num);
 
 /* eval.c */
-int eval (mpcandi_t *n, FILE *fd, int bPrp);
+int eval (mpcandi_t *n, FILE *fd, int bPrp, int allow_brent);
+int parse_brent_label (char *, const char *, const char **);
 int eval_str (mpcandi_t *n, char *cp, int primetest, char **EndChar); /* EndChar can be NULL */
 
 /* candi.c */

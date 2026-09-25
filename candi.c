@@ -57,6 +57,7 @@ void
 mpcandi_t_init (mpcandi_t *n)
 {
   n->cpExpr = NULL;
+  n->brent_label[0] = 0;
   n->nexprlen = 0;
   n->ndigits = 1;
   mpz_init_set_ui (n->n, 1);
@@ -78,6 +79,7 @@ mpcandi_t_free (mpcandi_t *n)
   n->cpExpr = NULL;
   n->nexprlen = 0;
   n->ndigits = 0;
+  n->brent_label[0] = 0;
   mpz_clear (n->n);
   n->isPrp = 1;	  /* "default" to prp, so that if the candidate does not get
 		     filled in, it will not be tested */
@@ -104,6 +106,7 @@ mpcandi_t_add_candidate (mpcandi_t *n, mpz_t c, const char *cpExpr,
       ASSERT_ALWAYS (n->cpExpr != NULL);
       strcpy (n->cpExpr, cpExpr);
     }
+  n->brent_label[0] = 0;
   mpz_set (n->n, c);
   n->ndigits = nb_digits (c);
   if (primetest)

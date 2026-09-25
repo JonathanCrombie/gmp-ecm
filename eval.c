@@ -87,7 +87,44 @@ static int  aurif (mpz_t output, mpz_t n, mpz_t base, int sign);
 /* This is the function that the app   */
 /* calls to read the expression line   */
 /***************************************/
-int eval (mpcandi_t *n, FILE *fd, int primetest)
+/* Parse only the two provenance columns, never the parent number itself.
+   Return 0 for an ordinary expression, -1 for a malformed label, or 1.
+   The same parser validates LABEL text in COMMENT when resuming. */
+int
+parse_brent_label (char *label, const char *text, const char **end)
+{
+  const char *p = text, *base, *base_end, *exponent, *exponent_end;
+  char sign, suffix[2] = "";
+  size_t base_length, exponent_length;
+  while (isspace ((unsigned char) *p)) p++;
+  base = p;
+  while (isdigit ((unsigned char) *p)) p++;
+  base_end = p;
+  if (p == base || !isspace ((unsigned char) *p)) return 0;
+  while (isspace ((unsigned char) *p)) p++;
+  exponent = p;
+  while (isdigit ((unsigned char) *p)) p++;
+  exponent_end = p;
+  if (p == exponent || (*p != '+' && *p != '-')) return 0;
+  sign = *p++;
+  if (*p == 'L' || *p == 'M' || *p == 'l' || *p == 'm')
+    suffix[0] = (char) toupper ((unsigned char) *p++);
+  if (!suffix[0] && isdigit ((unsigned char) *p)) return 0;
+  if (*p && !isspace ((unsigned char) *p)) return -1;
+  while (base + 1 < base_end && *base == '0') base++;
+  while (exponent + 1 < exponent_end && *exponent == '0') exponent++;
+  base_length = (size_t) (base_end - base);
+  exponent_length = (size_t) (exponent_end - exponent);
+  if ((base_length == 1 && *base < '2') || *exponent == '0' ||
+      base_length + exponent_length + 2 + (suffix[0] != 0) > 248) return -1;
+  sprintf (label, "%.*s %.*s%c%s", (int) base_length, base,
+           (int) exponent_length, exponent, sign, suffix);
+  while (isspace ((unsigned char) *p)) p++;
+  *end = p;
+  return 1;
+}
+
+int eval (mpcandi_t *n, FILE *fd, int primetest, int allow_brent)
 {
   int ret;
   int nMaxSize = 2000, nCurSize = 0;
@@ -103,6 +140,7 @@ ChompLine:
       do
         c = fgetc (fd);
       while (c != EOF && !IS_NEWLINE(c));
+      if (nCurSize) goto EvaluateLine;
       if (IS_NEWLINE(c))
         goto JoinLinesLoop;
     }
@@ -122,9 +160,8 @@ ChompLine:
 	  ungetc (peek_c, fd);
         }
 
-      /* strip space and tabs out here, and then we DON'T have to mess with them in the rest of the parser */
-      if (!isspace (c) && c != '"' && c != '\'')
-	expr[nCurSize++] = (char) c;
+      /* Keep column boundaries until Brent detection is complete. */
+      expr[nCurSize++] = (char) c;
 
       if (nCurSize == nMaxSize)
       {
@@ -136,7 +173,45 @@ ChompLine:
       }
       c = fgetc (fd);
     }
+EvaluateLine:
   expr[nCurSize] = 0;
+  if (allow_brent)
+    {
+      char label[sizeof (n->brent_label)];
+      const char *composite, *end;
+      int brent = parse_brent_label (label, expr, &composite);
+      if (brent)
+        {
+          if (brent < 0) goto invalid_brent;
+          end = composite;
+          while (isdigit ((unsigned char) *end)) end++;
+          if (end == composite) goto invalid_brent;
+          while (isspace ((unsigned char) *end)) end++;
+          if (*end) goto invalid_brent;
+          mpz_init (t);
+          if (mpz_set_str (t, composite, 10) != 0 || mpz_cmp_ui (t, 1) <= 0)
+            { mpz_clear (t); goto invalid_brent; }
+          ret = mpcandi_t_add_candidate (n, t, NULL, primetest);
+          mpz_clear (t);
+          strcpy (n->brent_label, label);
+          if (c == ';') ungetc (c, fd);
+          free (expr);
+          return ret;
+invalid_brent:
+          fprintf (stderr, "Error: invalid Brent row; expected base exponent[+-][L|M] composite (label at most 248 bytes)\n");
+          free (expr);
+          exit (EXIT_FAILURE);
+        }
+    }
+  /* Retain the original whitespace/quote rules for ordinary expressions. */
+  {
+    int i, size = 0;
+    for (i = 0; i < nCurSize; i++)
+      if (!isspace ((unsigned char) expr[i]) && expr[i] != '"' && expr[i] != '\'')
+        expr[size++] = expr[i];
+    nCurSize = size;
+    expr[nCurSize] = 0;
+  }
   if (!nCurSize)
     ret = 0;
   else

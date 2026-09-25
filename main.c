@@ -25,6 +25,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #include <sys/stat.h>
 #include <time.h>
 #include <math.h>
+#include <errno.h>
 #ifdef _MSC_VER
 #  include <winsock2.h>
 #endif
@@ -303,13 +304,43 @@ print_config (void)
 #endif
 }
 
+#ifdef HAVE_GWNUM
+/* A Brent parent is a multiple of the input, not the number to factor.
+   Verify divisibility without constructing that potentially much larger parent. */
+static int
+brent_kbnc (unsigned long *b, unsigned long *power, signed long *c,
+            const mpcandi_t *candidate)
+{
+  char *end;
+  mpz_t remainder;
+  int valid;
+  if (!candidate->brent_label[0]) return 0;
+  errno = 0;
+  *b = strtoul (candidate->brent_label, &end, 10);
+  if (errno || *b > UINT32_MAX) return 0;
+  *power = strtoul (end + 1, &end, 10);
+  if (errno || *power > UINT32_MAX) return 0;
+  *c = *end == '+' ? 1 : -1;
+  /* GWNUM's interface uses 32-bit base/exponent and bounded FFT lengths. */
+  if ((double) *power * log2 ((double) *b) > MAX_PRIME_AVX512) return 0;
+  mpz_init_set_ui (remainder, *b);
+  mpz_powm_ui (remainder, remainder, *power, candidate->n);
+  if (*c > 0) mpz_add_ui (remainder, remainder, 1);
+  else mpz_sub_ui (remainder, remainder, 1);
+  valid = mpz_divisible_p (remainder, candidate->n);
+  mpz_clear (remainder);
+  return valid;
+}
+#endif
+
 /* r <- q mod N. 
    Return value: 1 if den invertible, 0 if factor found; in this case
    gcd(den(q), N) is put in r.
  */
 static int
-mod_from_mpq (mpz_t r, mpq_t q, mpz_t N, int verbose)
+mod_from_mpq (mpz_t r, mpq_t q, const mpcandi_t *candidate, int verbose)
 {
+    mpz_srcptr N = candidate->n;
     mpz_t inv, C;
     int factor_is_prime, cofactor_is_prime, ret = ECM_NO_FACTOR_FOUND;
  
@@ -326,6 +357,7 @@ mod_from_mpq (mpz_t r, mpq_t q, mpz_t N, int verbose)
 	mpz_out_str (stdout, 10, r);
 	if (verbose > 0)
 	    printf ("\n");
+	print_brent_source (candidate, verbose > 0 ? stdout : stderr);
 	if (mpz_cmp (r, N) == 0)
 	  ret = ECM_INPUT_NUMBER_FOUND;
 	else
@@ -1178,6 +1210,9 @@ main (int argc, char *argv[])
   /* Main loop */
   while ((cnt > 0 || feof (infile) == 0) && !exit_asap_value)
     {
+#ifdef HAVE_GWNUM
+      int brent_form = 0, brent_param = 0;
+#endif
       result = ECM_NO_FACTOR_FOUND;
       params->B1done = B1done; /* may change with resume */
       
@@ -1259,7 +1294,7 @@ main (int argc, char *argv[])
             }
           else /* new number */
             {
-              if (!read_number (&n, infile, primetest))
+              if (!read_number (&n, infile, primetest, 1))
                 break;
 
               cnt = count;
@@ -1283,7 +1318,7 @@ main (int argc, char *argv[])
 	    {
 		if (param != ECM_PARAM_TWISTED_HESSIAN)
 		    {
-			returncode = mod_from_mpq (A, rat_A, n.n, verbose);
+			returncode = mod_from_mpq (A, rat_A, &n, verbose);
 		    }
 		else
 		    {
@@ -1305,13 +1340,13 @@ main (int argc, char *argv[])
 		  exit (EXIT_FAILURE);
                 }
 
-	      returncode = mod_from_mpq (x, rat_x0, n.n, verbose);
+	      returncode = mod_from_mpq (x, rat_x0, &n, verbose);
 	      if (returncode != ECM_NO_FACTOR_FOUND)
                   goto free_all1;
 
 	      if (specific_y0)
 		{
-		  returncode = mod_from_mpq (y, rat_y0, n.n, verbose);
+		  returncode = mod_from_mpq (y, rat_y0, &n, verbose);
 		  if (returncode != ECM_NO_FACTOR_FOUND)
                   goto free_all1;
 		}
@@ -1328,6 +1363,8 @@ main (int argc, char *argv[])
 		mpz_set (orig_y0, y);  
 	    }
         }
+      if (cnt == count)
+        print_brent_source (&n, verbose > 0 ? stdout : stderr);
       if (verbose >= OUTPUT_NORMAL)
         {
           if (cnt == count)
@@ -1510,12 +1547,25 @@ main (int argc, char *argv[])
       else
       {
       /* check if the input number can be represented as k*b^n+c */
-      if (kbnc_str (&gw_k, &gw_b, &gw_n, &gw_c, n.cpExpr, n.n))
+      if (!params->gpu && gw_cl_flag >= 0)
+        brent_form = brent_kbnc (&gw_b, &gw_n, &gw_c, &n);
+      if (brent_form) gw_k = 1.0;
+      if (brent_form || kbnc_str (&gw_k, &gw_b, &gw_n, &gw_c, n.cpExpr, n.n))
         {
           params->gw_k = gw_k;
           params->gw_b = gw_b;
           params->gw_n = gw_n;
           params->gw_c = gw_c;
+          /* GWNUM needs Suyama. Select it only for eligible new Brent inputs;
+             explicit curves, resumed curves and ordinary inputs keep their policy. */
+          if (brent_form && method == ECM_ECM && params->param == ECM_PARAM_DEFAULT &&
+              params->sigma_is_A == 0 && B1 >= params->B1done &&
+              (double) gw_n * log2 ((double) gw_b) >=
+              (gw_cl_flag > 0 ? 350 : GWNUM_KBNC_THRESHOLD))
+            {
+              params->param = ECM_PARAM_SUYAMA;
+              brent_param = 1;
+            }
           if (verbose > OUTPUT_NORMAL)
             printf ("Found number: %.0f*%lu^%lu + %ld\n",
                     gw_k, gw_b, gw_n, gw_c);
@@ -1620,6 +1670,9 @@ main (int argc, char *argv[])
         }
 
       mpz_clear (orig_n);
+#ifdef HAVE_GWNUM
+      if (brent_param) params->param = ECM_PARAM_DEFAULT;
+#endif
 
       /* Save the batch exponent s if requested */
       if (savefile_s != NULL)
