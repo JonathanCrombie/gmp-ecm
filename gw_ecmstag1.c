@@ -1300,7 +1300,7 @@ int normalize (
 \
 	if( B1 > *B1_done )\
 	{\
-		chain_code_file = fopen("Lchain_codes.dat", "r");\
+		chain_code_file = fopen("Lchain_codes.dat", "rb");\
 		if(chain_code_file != (FILE *)NULL )\
 		{\
 			using_code_file = 1;\

@@ -1118,7 +1118,7 @@ ecm_stage1 (mpz_t f, mpres_t x, mpres_t A, mpmod_t n, double B1,
 
   if( B1 > *B1done )
   {
-    chain_code_file = fopen("Lchain_codes.dat", "r");
+    chain_code_file = fopen("Lchain_codes.dat", "rb");
     if(chain_code_file != (FILE *)NULL )
     {
       using_code_file = 1;

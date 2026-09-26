@@ -4139,7 +4139,7 @@ int32_t main( int argc, char *argv[])
 		chain_code_list[0] = CHAIN_START_4_7;
 		chain_code_list[1] = CHAIN_START_5_8_13;
 
-		chain_code_file = fopen(file_1,"w");
+		chain_code_file = fopen(file_1,"wb");
 		fwrite((int8_t *)chain_code_list, sizeof(uint64_t), 2, chain_code_file);
 		fclose(chain_code_file);
 		printf("\nChain codes for 11 and 13 written to file %s\n", file_1);
@@ -4163,7 +4163,7 @@ int32_t main( int argc, char *argv[])
 	}
 	else /* resume from where we left off */
 	{
-		current_status_file = fopen(file_6,"r");
+		current_status_file = fopen(file_6,"rb");
 		dum = fread((int8_t *)chain_code_list_start_index, sizeof(uint32_t), 1, current_status_file);
 		dum = fread((int8_t *)&smallest_unsaved_code_index, sizeof(uint32_t), 1, current_status_file);
 		dum = fread((int8_t *)&old_smallest_unsaved_code_index, sizeof(uint32_t), 1, current_status_file);
@@ -4224,7 +4224,7 @@ int32_t main( int argc, char *argv[])
 		/* open active input files and, if restarting, set file positions */
 		if( old_tgt_prime_list_count > 0 )
 		{
-			old_tgt_p_list_read_file = fopen(old_target_prime_filename, "r");
+			old_tgt_p_list_read_file = fopen(old_target_prime_filename, "rb");
 
 			/* bypass any target primes which have already been processed */
 			if( old_tgt_p_file_read_count > 0 )
@@ -4233,7 +4233,7 @@ int32_t main( int argc, char *argv[])
 
 		if( old_pending_code_list_count > 0 )
 		{
-			old_pending_code_list_read_file = fopen(old_pending_code_filename, "r");
+			old_pending_code_list_read_file = fopen(old_pending_code_filename, "rb");
 
 			/* bypass any chain codes which have already been processed */
 			if( old_pending_code_file_read_count > 0 )
@@ -4618,7 +4618,7 @@ int32_t main( int argc, char *argv[])
 
 				if( code_save_count > 0  )
 				{
-					chain_code_file = fopen(file_1,"a");
+					chain_code_file = fopen(file_1,"ab");
 					fwrite((int8_t *)chain_code_list, sizeof(uint64_t), code_save_count, chain_code_file);
 					fclose(chain_code_file);
 					printf("info: stored %u chain codes in file %s\n", code_save_count, file_1);
@@ -4632,7 +4632,7 @@ int32_t main( int argc, char *argv[])
 				{
 					/* save the rest of the chain code array to the new pending chain code file */
 					k = chain_code_array_count - code_save_count;
-					new_pending_code_list_write_file = fopen(new_pending_code_filename, "w");
+					new_pending_code_list_write_file = fopen(new_pending_code_filename, "wb");
 					fwrite((int8_t *)&chain_code_list[code_save_count], sizeof(uint64_t), k, new_pending_code_list_write_file);
 					printf("info: stored %u chain codes in file %s\n", k, new_pending_code_filename);
 					new_pending_code_list_count = k;
@@ -4679,7 +4679,7 @@ int32_t main( int argc, char *argv[])
 					fclose(new_pending_code_list_write_file);
 
 					/* save target primes with no chain yet to the new target prime file */
-					new_tgt_p_list_write_file = fopen(new_target_prime_filename, "w");
+					new_tgt_p_list_write_file = fopen(new_target_prime_filename, "wb");
 					k = 0;
 					for(j = (uint32_t)i; j < *tgt_p_count; j++)
 					{
@@ -4703,7 +4703,7 @@ int32_t main( int argc, char *argv[])
 					{
 						/* read and save codes from the old pending code file until a zero code appears */
 						k = 0;
-						chain_code_file = fopen(file_1,"a");
+						chain_code_file = fopen(file_1,"ab");
 						while( old_pending_code_file_read_count < old_pending_code_list_count )
 						{
 							dum = fread((int8_t *)&temp_var, sizeof(uint64_t), 1, old_pending_code_list_read_file);
@@ -4744,7 +4744,7 @@ int32_t main( int argc, char *argv[])
 			else /* new target prime list file has already started */
 			{
 				/* write the chain code array to the new pending code list file */
-				new_pending_code_list_write_file = fopen(new_pending_code_filename, "a");
+					new_pending_code_list_write_file = fopen(new_pending_code_filename, "ab");
 				fwrite((int8_t *)chain_code_list, sizeof(uint64_t), chain_code_array_count, new_pending_code_list_write_file);
 				new_pending_code_list_count += chain_code_array_count;
 				printf("info: stored %u chain codes in file %s\n", chain_code_array_count, new_pending_code_filename);
@@ -4790,7 +4790,7 @@ int32_t main( int argc, char *argv[])
 				fclose(new_pending_code_list_write_file);
 
 				/* write target primes without a code yet to the new target prime file */
-				new_tgt_p_list_write_file = fopen(new_target_prime_filename, "a");
+					new_tgt_p_list_write_file = fopen(new_target_prime_filename, "ab");
 				k = 0;
 				for(j = 0; j < *tgt_p_count; j++)
 				{
@@ -4946,7 +4946,7 @@ int32_t main( int argc, char *argv[])
 			}
 
 			/* save current parameters for possible future restart */
-			current_status_file = fopen(file_6,"w");
+			current_status_file = fopen(file_6,"wb");
 			fwrite((int8_t *)chain_code_list_start_index, sizeof(uint32_t), 1, current_status_file);
 			fwrite((int8_t *)&smallest_unsaved_code_index, sizeof(uint32_t), 1, current_status_file);
 			fwrite((int8_t *)&old_smallest_unsaved_code_index, sizeof(uint32_t), 1, current_status_file);
