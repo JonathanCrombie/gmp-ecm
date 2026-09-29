@@ -899,6 +899,17 @@ void ell_dbl_xz_scr_last (
 	}
 }
 
+/* Return ordinary gwnums, applying only a doubling reserved by this run. */
+static void ell_stage1_finish (struct xz *point, struct xz *scr, int twos_count)
+{
+	if (twos_count)
+		ell_dbl_xz_scr_last (point, point, scr);
+	else {
+		gwunfft (&gwdata, point->x, point->x);
+		gwunfft (&gwdata, point->z, point->z);
+	}
+}
+
 /* Adds Q=(in2.x:in2.z) and R=(in1.x:in1.z) and puts the result in (out.x:out.z).  Assumes that Q-R=P or R-Q=P where P=(diff.x:diff.z). */
 /* Input arguments may be in FFTed format.  Out argument can be same as any of the 3 input arguments. */
 /* Scratch xz argument cannot equal in1, in2, or diff. */
@@ -1300,7 +1311,7 @@ int normalize (
 \
 	if( B1 > *B1_done )\
 	{\
-		chain_code_file = fopen("Lchain_codes.dat", "rb");\
+		chain_code_file = fopen("Lchain_codes.dat", "r");\
 		if(chain_code_file != (FILE *)NULL )\
 		{\
 			using_code_file = 1;\
@@ -1563,10 +1574,7 @@ int gw_ecmStage1_u32 (
 	for (mult = 2; mult <= B1; mult *= 2)
 		if (mult > *B1_done) twos_count++;
 
-	/* save one factor of 2 for final "ell_dbl_xz_scr_last" operation */
-	/* note that if twos_count == 0 here we will have one extra factor of 2
-		in the final multiple of the starting point on the curve.
-		It is unlikely that this will pose any problems */
+	/* Reserve a final doubling only if a new power of 2 is required. */
 
 	for (mult = 1; mult < twos_count; mult++)
 		ell_dbl_xz_scr (&current_xz, &current_xz, &scr);
@@ -1605,8 +1613,7 @@ int gw_ecmStage1_u32 (
 			if (using_code_file)
 				gwcopy_xz ( &gwdata, &LCS[base_indx], &current_xz);
 
-			/* include the final factor of 2, revert to gwnums */
-			ell_dbl_xz_scr_last (&current_xz, &current_xz, &scr);
+			ell_stage1_finish (&current_xz, &scr, twos_count);
 
 			if (z_array == NULL) {
 				StopCheckRoutine = NULL;
@@ -1639,8 +1646,7 @@ int gw_ecmStage1_u32 (
 	if (using_code_file)
 		gwcopy_xz ( &gwdata, &LCS[base_indx], &current_xz);
 
-	/* include the final factor of 2, revert to gwnums */
-	ell_dbl_xz_scr_last (&current_xz, &current_xz, &scr);
+	ell_stage1_finish (&current_xz, &scr, twos_count);
 
 	if (z_array == NULL) {
 		StopCheckRoutine = NULL;
@@ -1853,10 +1859,7 @@ int gw_ecmStage1_u64 (
 	for (mult = 2; mult <= B1; mult *= 2)
 		if (mult > *B1_done) twos_count++;
 
-	/* save one factor of 2 for final ell_dbl_xz_scr_last operation */
-	/* note that if twos_count == 0 here we will have one extra factor of 2
-		in the final multiple of the starting point on the curve.
-		It is unlikely that this will pose any problems */
+	/* Reserve a final doubling only if a new power of 2 is required. */
 
 	for (mult = 1; mult < twos_count; mult++)
 		ell_dbl_xz_scr (&current_xz, &current_xz, &scr);
@@ -1895,8 +1898,7 @@ int gw_ecmStage1_u64 (
 			if (using_code_file)
 				gwcopy_xz ( &gwdata, &LCS[base_indx], &current_xz);
 
-			/* include the final factor of 2, revert to gwnums */
-			ell_dbl_xz_scr_last (&current_xz, &current_xz, &scr);
+			ell_stage1_finish (&current_xz, &scr, twos_count);
 
 			if (z_array == NULL) {
 				StopCheckRoutine = NULL;
@@ -1927,8 +1929,7 @@ int gw_ecmStage1_u64 (
 	if (using_code_file)
 		gwcopy_xz ( &gwdata, &LCS[base_indx], &current_xz);
 
-	/* include the final factor of 2, revert to gwnums */
-	ell_dbl_xz_scr_last (&current_xz, &current_xz, &scr);
+	ell_stage1_finish (&current_xz, &scr, twos_count);
 
 /* Normalize the x value OR return the x,z pair */
 

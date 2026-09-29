@@ -1118,7 +1118,7 @@ ecm_stage1 (mpz_t f, mpres_t x, mpres_t A, mpmod_t n, double B1,
 
   if( B1 > *B1done )
   {
-    chain_code_file = fopen("Lchain_codes.dat", "rb");
+    chain_code_file = fopen("Lchain_codes.dat", "r");
     if(chain_code_file != (FILE *)NULL )
     {
       using_code_file = 1;
@@ -1825,6 +1825,7 @@ ecm (mpz_t f, mpz_t x, mpz_t y, int param, mpz_t sigma, mpz_t n, mpz_t go,
   int base2 = 0;  /* If n is of form 2^n[+-]1, set base to [+-]n */
   int Fermat = 0; /* If base2 > 0 is a power of 2, set Fermat to base2 */
   int po2 = 0;    /* Whether we should use power-of-2 poly degree */
+  int gw_stage1_done = 0;
   long st;
   mpmod_t modulus;
   curve P;
@@ -2140,26 +2141,12 @@ ecm (mpz_t f, mpz_t x, mpz_t y, int param, mpz_t sigma, mpz_t n, mpz_t go,
         }
     }
 
-  /* Compute s for the batch mode */
-  if (IS_BATCH_MODE(param) && ECM_IS_DEFAULT_B1_DONE(*B1done) &&
-      (B1 != *batch_last_B1_used || mpz_cmp_ui (batch_s, 1) <= 0))
-    {
-      *batch_last_B1_used = B1;
-
-      st = cputime ();
-      /* construct the batch exponent */
-      compute_s (batch_s, B1, NULL);
-      outputf (OUTPUT_VERBOSE, "Computing batch product (of %" PRIu64
-                               " bits) of primes up to B1=%1.0f took %ldms\n",
-                               mpz_sizeinbase (batch_s, 2), B1,
-                               elltime (st, cputime ()));
-    }
-
   st = cputime ();
 
 #ifdef HAVE_GWNUM
-  /* gwnum only used when param == 0 and command line did not include -force-no-gwnum */
-  if ((param == ECM_PARAM_SUYAMA) && (gw_cl_flag >= 0))
+  /* Both parametrizations supply a Montgomery curve and an x:z point. */
+  if ((param == ECM_PARAM_SUYAMA || param == ECM_PARAM_BATCH_32BITS_D) &&
+      gw_cl_flag >= 0)
   {
     /* set thresholds */
     if (gw_cl_flag > 0) /* -force-gwnum specified in command line */
@@ -2229,10 +2216,12 @@ ecm (mpz_t f, mpz_t x, mpz_t y, int param, mpz_t sigma, mpz_t n, mpz_t go,
       }
     }
 
-    if ((gw_b != 0 || (gw_b == 0 && gw_k >= 1.0) ) && B1 >= *B1done)
-      youpi = gw_ecm_stage1 (f, &P, modulus, B1, B1done, go, gw_k, gw_b, gw_n, gw_c);
+    if ((gw_b != 0 || (gw_b == 0 && gw_k >= 1.0)) && B1 > *B1done)
+      {
+        youpi = gw_ecm_stage1 (f, &P, modulus, B1, B1done, go, gw_k, gw_b, gw_n, gw_c);
+        gw_stage1_done = (*B1done >= B1);
+      }
   }
-  /* end if ((param == ECM_PARAM_SUYAMA) && (gw_cl_flag >= 0)) */
 
   /* At this point B1 == *B1done unless interrupted, or no GWNUM ecm_stage1
      is available */
@@ -2244,16 +2233,30 @@ ecm (mpz_t f, mpz_t x, mpz_t y, int param, mpz_t sigma, mpz_t n, mpz_t go,
     }
 #endif /* HAVE_GWNUM */
 
-  if (B1 > *B1done || mpz_cmp_ui (go, 1) > 0)
+  if (!gw_stage1_done && (B1 > *B1done || mpz_cmp_ui (go, 1) > 0))
     {
         /* The batch ladder assumes its base point has x=2. For a saved
            param-3 point, ordinary stage 1 applies only the prime powers
            above B1done, preserving the curve and the work already done. */
         if (IS_BATCH_MODE(param) &&
             (param != ECM_PARAM_BATCH_32BITS_D || ECM_IS_DEFAULT_B1_DONE(*B1done)))
-        /* FIXME: go, stop_asap and chkfilename are ignored in batch mode */
-	    youpi = ecm_stage1_batch (f, P.x, P.A, modulus, B1, B1done, 
-				      param, batch_s);
+          {
+            /* Compute the batch exponent only if GWNUM did not do stage 1. */
+            if (B1 != *batch_last_B1_used || mpz_cmp_ui (batch_s, 1) <= 0)
+              {
+                *batch_last_B1_used = B1;
+                st = cputime ();
+                compute_s (batch_s, B1, NULL);
+                outputf (OUTPUT_VERBOSE, "Computing batch product (of %" PRIu64
+                         " bits) of primes up to B1=%1.0f took %ldms\n",
+                         mpz_sizeinbase (batch_s, 2), B1,
+                         elltime (st, cputime ()));
+                st = cputime ();
+              }
+            /* FIXME: go, stop_asap and chkfilename are ignored in batch mode */
+            youpi = ecm_stage1_batch (f, P.x, P.A, modulus, B1, B1done,
+                                     param, batch_s);
+          }
         else{
 #ifdef HAVE_ADDLAWS
 	    if(E->type == ECM_EC_TYPE_MONTGOMERY)
@@ -2274,7 +2277,7 @@ ecm (mpz_t f, mpz_t x, mpz_t y, int param, mpz_t sigma, mpz_t n, mpz_t go,
 #endif
 	}
     }
-  else if (mpz_sgn (x) != 0)
+  else if (!gw_stage1_done && mpz_sgn (x) != 0)
     {
 	/* when x <> 0, we initialize P to (x:y) */
 	mpres_set_z (P.x, x, modulus);

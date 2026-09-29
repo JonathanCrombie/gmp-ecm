@@ -1677,6 +1677,13 @@ main (int argc, char *argv[])
       /* Save the batch exponent s if requested */
       if (savefile_s != NULL)
         {
+          /* GWNUM does not need the batch exponent, but -bsaves still does. */
+          if (params->batch_last_B1_used != B1 ||
+              mpz_cmp_ui (params->batch_s, 1) <= 0)
+            {
+              compute_s (params->batch_s, B1, NULL);
+              params->batch_last_B1_used = B1;
+            }
           int ret = write_s_in_file (savefile_s, params->batch_s, save_s_mmap,
                                      (uint64_t) B1);
           if (ret == 0) {
