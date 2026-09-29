@@ -32,21 +32,6 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #include "ecm-impl.h"
 #include "gw_ecmstag1.h"
 
-void __gxx_personality_v0()
-{
-  exit (EXIT_FAILURE);
-}
-
-void __cxa_guard_acquire ()
-{
-  return;
-}
-
-void __cxa_guard_release ()
-{
-  return;
-}
-
 /* With the following 2 functions, we try to find a representation of an
    input number in the form of z = k*b^n+c. If such a representation was
    found, set the the appropriate values and return 1. Otherwise, set b to

@@ -368,7 +368,8 @@ if test "x$with_gwnum" != "x"; then
   fi
   AC_CHECK_FILE([$with_gwnum/gwnum.a], [
     AC_DEFINE([HAVE_GWNUM], 1, [Define to 1 if gwnum.a exists])
-    GWLIB="$with_gwnum/gwnum.a -lpthread"
+    dnl GWNUM's C++ objects need the real runtime, including its static guards.
+    GWLIB="$with_gwnum/gwnum.a -lpthread -lstdc++"
     CPPFLAGS="$CPPFLAGS -I$with_gwnum"
   ],[
     with_gwnum=

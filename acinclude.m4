@@ -586,14 +586,14 @@ AS_IF([test "x$enable_gpu" = "xyes" ],
         #include <gmp.h>
         #include <cgbn.h>
       ],
-      [-I$cgbn_include $GMPLIB $NVCCFLAGS],
+      [-I$cgbn_include $CPPFLAGS $NVCCFLAGS],
       [AC_MSG_RESULT([yes])],
       [
         AC_MSG_RESULT([no])
         AC_MSG_ERROR([cgbn.h not found (check if /cgbn needed after <PATH>/include)])
       ]
     )
-    NVCCFLAGS="-I$with_cgbn_include $GMPLIB $NVCCFLAGS"
+    NVCCFLAGS="-I$with_cgbn_include $NVCCFLAGS"
 
     LIBS="$LIBS_BACKUP"
     LDFLAGS="$LDFLAGS_BACKUP"
