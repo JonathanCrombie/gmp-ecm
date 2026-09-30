@@ -20,7 +20,7 @@
 #define ECM_TUNE_CASE "generic/params33.h"
 #include "generic/params33.h"
 
-#elif defined(__x86_64)
+#elif defined(__x86_64) || (defined(_M_X64) && !defined(_M_ARM64EC))
 #define ECM_TUNE_CASE "x86_64/params.h"
 #include "x86_64/params.h"
 

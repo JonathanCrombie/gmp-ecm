@@ -2055,6 +2055,20 @@ extern __longlong_h_C UWtype mpn_udiv_qrnnd_r (UWtype, UWtype, UWtype, UWtype *)
   } while (0)
 #endif
 
+/* MSVC x64 exposes the full 64-by-64 product as an intrinsic. */
+#if !defined (umul_ppmm) && defined (_MSC_VER) && defined (_M_X64) \
+    && !defined (_M_ARM64EC) && W_TYPE_SIZE == 64
+#include <intrin.h>
+#define umul_ppmm(w1, w0, u, v)                                    \
+  do {                                                            \
+    unsigned __int64 __hi, __lo;                                   \
+    __lo = _umul128 ((unsigned __int64) (u),                        \
+                     (unsigned __int64) (v), &__hi);                \
+    (w1) = __hi;                                                  \
+    (w0) = __lo;                                                  \
+  } while (0)
+#endif
+
 /* If we still don't have umul_ppmm, define it using plain C.
 
    For reference, when this code is used for squaring (ie. u and v identical
