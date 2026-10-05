@@ -53,6 +53,10 @@ ecm_init (ecm_params q)
   mpz_init_set_ui (ptrE->sq[0], 1);
   q->E = ptrE;
   q->param = ECM_PARAM_DEFAULT;
+  q->curve_param = ECM_PARAM_DEFAULT;
+  mpz_init_set_si (q->B2actual, ECM_DEFAULT_B2);
+  mpz_init (q->gpu_factor_sigmas);
+  mpz_init (q->gpu_factor_stages);
   mpz_init_set_ui (q->go, 1);
   q->B1done = ECM_DEFAULT_B1_DONE;
   mpz_init_set_si (q->B2min, -1.0); /* default: B2min will be set to B1 */
@@ -92,6 +96,10 @@ void
 ecm_reset (ecm_params q)
 {
   mpz_set_ui (q->sigma, 0);
+  q->curve_param = ECM_PARAM_DEFAULT;
+  mpz_set_si (q->B2actual, ECM_DEFAULT_B2);
+  mpz_set_ui (q->gpu_factor_sigmas, 0);
+  mpz_set_ui (q->gpu_factor_stages, 0);
   q->B1done = ECM_DEFAULT_B1_DONE;
   mpz_set_ui (q->x, 0);
 }
@@ -102,6 +110,9 @@ ecm_clear (ecm_params q)
   mpz_clear (q->x);
   mpz_clear (q->y);
   mpz_clear (q->sigma);
+  mpz_clear (q->B2actual);
+  mpz_clear (q->gpu_factor_sigmas);
+  mpz_clear (q->gpu_factor_stages);
   mpz_clear (q->go);
   mpz_clear (q->B2min);
   mpz_clear (q->B2);
@@ -123,6 +134,15 @@ ecm_factor (mpz_t f, mpz_t n, double B1, ecm_params p0)
   int res; /* return value */
   ecm_params q;
   ecm_params_ptr p;
+
+  /* Even inputs return before selecting a curve or an automatic B2. */
+  if (p0 != NULL)
+    {
+      p0->curve_param = ECM_PARAM_DEFAULT;
+      mpz_set (p0->B2actual, p0->B2);
+      mpz_set_ui (p0->gpu_factor_sigmas, 0);
+      mpz_set_ui (p0->gpu_factor_stages, 0);
+    }
 
   if (mpz_cmp_ui (n, 1) <= 0)
     {
@@ -158,7 +178,7 @@ ecm_factor (mpz_t f, mpz_t n, double B1, ecm_params p0)
                        p->os, p->es, p->chkfilename, p->TreeFilename, p->maxmem,
                        p->stage1time, p->rng, p->stop_asap, p->batch_s,
                        &(p->batch_last_B1_used), p->gw_k, p->gw_b, p->gw_n,
-                       p->gw_c, p->gw_cl_flag);
+                       p->gw_c, p->gw_cl_flag, &p->curve_param, p->B2actual);
 #ifdef WITH_GPU
         }
       else
@@ -171,12 +191,12 @@ ecm_factor (mpz_t f, mpz_t n, double B1, ecm_params p0)
     res = pm1 (f, p->x, n, p->go, &(p->B1done), B1, p->B2min, p->B2,
                p->k, p->verbose, p->repr, p->use_ntt, p->os, p->es,
                p->chkfilename, p->TreeFilename, p->maxmem, p->rng,
-               p->stop_asap);
+               p->stop_asap, p->B2actual);
   else if (p->method == ECM_PP1)
     res = pp1 (f, p->x, n, p->go, &(p->B1done), B1, p->B2min, p->B2,
                p->k, p->verbose, p->repr, p->use_ntt, p->os, p->es,
                p->chkfilename, p->TreeFilename, p->maxmem, p->rng,
-               p->stop_asap);
+               p->stop_asap, p->B2actual);
   else
     {
       fprintf (p->es, "Error, unknown method: %d\n", p->method);

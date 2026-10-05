@@ -803,3 +803,52 @@ https://packages.debian.org/sid/gmp-ecm.
 An opam package was built by Michael Soegtrop and was tested on MaOS
 (including Apple silicon), many Linux variants and Windows (MinGW with cygwin
 build host). See https://github.com/ocaml/opam-repository/pull/20105.
+
+##############################################################################
+
+13. Brent factor logging and optional group orders.
+
+Proper factors of inputs with Brent metadata are appended to BrentFactors.log
+in the current working directory. This includes labels restored from the
+COMMENT=LABEL= field of a save file and preserves an optional L/M suffix.
+Each record has the following form:
+
+2 12700-L 101; Sigma: 0:6; B1=100, B2=0; Group Order: 120 = 2^3 * 3 * 5
+
+The selected parameterization, full sigma, and B1/B2 are recorded. GPU factors
+retain an originating curve's sigma after deduplication or splitting. If an
+initialization factor precedes curve or automatic-bound selection, the record
+uses Sigma: unavailable and/or B2=auto. P-1/P+1 factors have no ECM sigma.
+Returning the entire input N does not create a factor record.
+
+To include group orders for prime/probable-prime ECM factors, supply a separate
+grouporder.exe on Windows or grouporder on Linux, beside the ECM executable or
+on PATH. The helper beside ECM takes precedence. It is invoked directly with
+three decimal arguments: factor, parameterization (0-3), and sigma. It must
+exit successfully and print these lines (leading whitespace is allowed):
+
+Group Order: 120
+Factored: 2^3 * 3 * 5
+
+The helper is provided by a separate project and contains its SEA data. This
+tree neither builds the helper nor creates or installs a data directory, and
+ECM does not link to PARI. Composite factors, non-ECM methods, unsupported
+curve descriptions, and a missing helper produce entries without Group Order.
+If a present helper fails or returns invalid/incomplete output, the factor is
+still logged, with Group Order: unavailable.
+
+After a successful append, ECM displays the exact record as:
+Adding Log Entry --> "..."
+In quiet mode this goes to stderr, preserving the numeric stdout format.
+File appends are locked so parallel ECM processes cannot interleave records.
+An append failure emits a warning without changing the factoring return code.
+
+Builds must recompile libecm and its callers with the generated ecm.h: the
+parameter structure now has output fields for the selected bound/curve and
+packed GPU factor sigmas/stages. The CLI logging source is brent_log.c; it is
+included in Makefile.am and the Windows CLI project files.
+
+Focused tests (no SEA directory needed):
+python3 tests/test-brent-logging.py /path/to/ecm /path/to/grouporder
+Add --gpu for a GPU-enabled build. The optional --stub executable is compiled
+from tests/grouporder-stub.c solely to test failed/malformed helper output.

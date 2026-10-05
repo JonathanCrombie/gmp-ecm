@@ -69,7 +69,7 @@ LDADD = libecm.la $(GMPLIB)
 
 ecm_CPPFLAGS = -DOUTSIDE_LIBECM
 ecm_CFLAGS = $(OPENMP_CFLAGS) -g
-ecm_SOURCES = auxi.c candi.c eval.c main.c resume.c addlaws.c torsions.c \
+ecm_SOURCES = auxi.c brent_log.c candi.c eval.c main.c resume.c addlaws.c torsions.c \
               getprime_r.c champions.h aprtcle/mpz_aprcl.c memusage.c
 
 tune_SOURCES = mpmod.c tune.c mul_lo.c listz.c auxlib.c ks-multiply.c \
@@ -113,6 +113,7 @@ noinst_HEADERS = basicdefs.h ecm-impl.h ecm-gmp.h ecm-ecm.h sp.h longlong.h \
                  aprtcle/mpz_aprcl.h aprtcle/jacobi_sum.h
 
 EXTRA_DIST = test.pm1 test.pp1 test.ecm README.lib INSTALL-ecm ecm.xml  \
+             tests/test-brent-logging.py tests/grouporder-stub.c \
              x86/params.h ia64/params.h arm/params.h    \
              powerpc64/params.h powerpc32/params.h sparc64/params.h     \
              hppa/params.h mips/params.h x86_64/params.h         \

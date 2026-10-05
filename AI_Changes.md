@@ -52,3 +52,15 @@ Commit: `f2ec9a5`
 | `ecm.c` | Open the CPU stage-1 Lucas-chain file with `rb`. |
 | `gw_ecmstag1.c` | Open the GWNUM stage-1 Lucas-chain file with `rb`. |
 | `LucasChainGenerator/src/LucasChainGen.c` | Change eleven file-opening modes to `rb`, `wb`, or `ab` for chain records, pending work, and restart data. |
+
+## 6. Brent factor logging with optional external group orders
+
+| Modified source file | Brief description |
+| --- | --- |
+| `brent_log.c` | Append locked, single-line factor records; optionally run the separately supplied Windows/Linux grouporder helper and capture its results. |
+| `auxi.c`, `main.c`, `ecm-ecm.h` | Log proper Brent factors, including initialization factors, and echo the exact entry while preserving quiet stdout. |
+| `ecm.h.in`, `factor.c`, `ecm.c`, `pm1.c`, `pp1.c` | Return selected curve and bound information for accurate logging. |
+| `cudawrapper.c` | Preserve originating sigmas and stage numbers when GPU factors are reduced and sorted. |
+| `Makefile.am`, `build.vs/{ecm,ecm_gpu,multiecm}/*.vcxproj*` | Include CLI logging in Linux and Windows builds; distribute focused tests. |
+| `tests/test-brent-logging.py`, `tests/grouporder-stub.c` | Check real helpers, missing/failed helpers, metadata, bounds, GPU attribution, and concurrent appends. |
+| `README`, `.gitignore` | Document the external helper contract and ignore local validation build artifacts. |

@@ -124,6 +124,10 @@ typedef struct
   signed long gw_c;    /* use for gwnum stage 1 if input has form k*b^n+c */
   signed long gw_cl_flag; /* command line flag: -1 = -force-no-gwnum, 1 = -force-gwnum,
                           0 = no command, use default thresholds */
+  int curve_param; /* Output: actual parametrization, or DEFAULT before selection. */
+  mpz_t B2actual; /* Output: selected B2; requested bound before selection. */
+  mpz_t gpu_factor_sigmas; /* Output: packed 64-bit sigmas, in factor order. */
+  mpz_t gpu_factor_stages; /* Output: packed 2-bit stages, in factor order. */
 } __ecm_param_struct;
 typedef __ecm_param_struct ecm_params[1];
 typedef __ecm_param_struct *ecm_params_ptr;
@@ -147,13 +151,14 @@ int ecm (mpz_t, mpz_t, mpz_t, int, mpz_t, mpz_t, mpz_t, double *, double, mpz_t,
          unsigned long, int, int, int, int, int, int, 
 	 ell_curve_t,  FILE* os, FILE* es,
          char*, char *, double, double, gmp_randstate_t, int (*)(void), mpz_t, 
-         double *, double, unsigned long, unsigned long, signed long, signed long);
+         double *, double, unsigned long, unsigned long, signed long, signed long,
+         int *, mpz_ptr);
 int pp1 (mpz_t, mpz_t, mpz_t, mpz_t, double *, double, mpz_t, mpz_t, 
          unsigned long, int, int, int, FILE*, FILE*, char*,
-         char *, double, gmp_randstate_t, int (*)(void));
+         char *, double, gmp_randstate_t, int (*)(void), mpz_ptr);
 int pm1 (mpz_t, mpz_t, mpz_t, mpz_t, double *, double, mpz_t, 
          mpz_t, unsigned long, int, int, int, FILE*, 
-	 FILE*, char *, char*, double, gmp_randstate_t, int (*)(void));
+	 FILE*, char *, char*, double, gmp_randstate_t, int (*)(void), mpz_ptr);
 
 /* different methods implemented */
 #define ECM_ECM 0

@@ -139,7 +139,8 @@ int
 process_newfactor (mpz_t g, int result, mpcandi_t *n, int method, 
                    int returncode, int gpu, unsigned int *cnt, 
                    int *resume_wasPrp, mpz_t resume_lastfac, 
-                   FILE *resumefile, int verbose, int deep)
+                   FILE *resumefile, int verbose, int deep,
+                   const ecm_params params, const mpz_t curve_sigma, double B1)
 {
   int factor_is_prime = 0;
         /* If a factor was found, indicate whether factor, cofactor are */
@@ -177,7 +178,8 @@ process_newfactor (mpz_t g, int result, mpcandi_t *n, int method,
         
         if (verbose > 0)
             printf ("\n");
-        print_brent_source (n, verbose > 0 ? stdout : stderr);
+        if (mpz_cmp (f, n->n) == 0)
+          print_brent_source (n, verbose > 0 ? stdout : stderr);
       }
 
   /* Complain about non-proper factors (0, negative) */
@@ -195,7 +197,7 @@ process_newfactor (mpz_t g, int result, mpcandi_t *n, int method,
       /* the second argument here tells aprtcle to not print primality proving progress info */
       factor_is_prime = mpz_aprtcle (f, 0);
 
-      if (verbose >= 1)
+      if (verbose >= 1 && !n->brent_label[0])
         {
           if (factor_is_prime == ECM_FAC_PRIME)
             printf ("Found prime factor of %u digits: ", nb_digits (f));
@@ -206,6 +208,12 @@ process_newfactor (mpz_t g, int result, mpcandi_t *n, int method,
           mpz_out_str (stdout, 10, f);
           printf ("\n");
         }
+
+      append_brent_factor (n, f, factor_is_prime,
+                            method == ECM_ECM && params->sigma_is_A == 0
+                              ? params->curve_param : ECM_PARAM_DEFAULT,
+                            curve_sigma, B1, params->B2actual,
+                            verbose > 0 ? stdout : stderr);
       
       if (resumefile != NULL)
         {

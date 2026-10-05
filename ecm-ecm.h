@@ -73,7 +73,12 @@ unsigned int nb_digits  (const mpz_t);
 int read_number (mpcandi_t*, FILE*, int, int);
 void print_brent_source (const mpcandi_t *, FILE *);
 int process_newfactor (mpz_t, int, mpcandi_t*, int, int, int, unsigned int*, 
-                       int*, mpz_t, FILE*, int, int);
+                       int*, mpz_t, FILE*, int, int, const ecm_params,
+                       const mpz_t, double);
+
+/* brent_log.c: optional external grouporder helper; no PARI linkage. */
+void append_brent_factor (const mpcandi_t *, const mpz_t, int, int,
+                          mpz_srcptr, double, mpz_srcptr, FILE *);
 
 /* Various logging levels */
 /* OUTPUT_ALWAYS means print always, regardless of verbose value */

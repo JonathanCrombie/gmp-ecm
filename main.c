@@ -338,7 +338,8 @@ brent_kbnc (unsigned long *b, unsigned long *power, signed long *c,
    gcd(den(q), N) is put in r.
  */
 static int
-mod_from_mpq (mpz_t r, mpq_t q, const mpcandi_t *candidate, int verbose)
+mod_from_mpq (mpz_t r, mpq_t q, const mpcandi_t *candidate, int verbose,
+              double B1, const mpz_t B2)
 {
     mpz_srcptr N = candidate->n;
     mpz_t inv, C;
@@ -357,12 +358,16 @@ mod_from_mpq (mpz_t r, mpq_t q, const mpcandi_t *candidate, int verbose)
 	mpz_out_str (stdout, 10, r);
 	if (verbose > 0)
 	    printf ("\n");
-	print_brent_source (candidate, verbose > 0 ? stdout : stderr);
+	if (mpz_cmp (r, N) == 0)
+          print_brent_source (candidate, verbose > 0 ? stdout : stderr);
 	if (mpz_cmp (r, N) == 0)
 	  ret = ECM_INPUT_NUMBER_FOUND;
 	else
 	  {
 	    factor_is_prime = mpz_probab_prime_p (r, PROBAB_PRIME_TESTS);
+            append_brent_factor (candidate, r, factor_is_prime,
+                                  ECM_PARAM_DEFAULT, NULL, B1, B2,
+                                  verbose > 0 ? stdout : stderr);
 	    mpz_init (C);
 	    mpz_tdiv_q (C, N, r);
 	    cofactor_is_prime = mpz_probab_prime_p (C, PROBAB_PRIME_TESTS);
@@ -1318,7 +1323,7 @@ main (int argc, char *argv[])
 	    {
 		if (param != ECM_PARAM_TWISTED_HESSIAN)
 		    {
-			returncode = mod_from_mpq (A, rat_A, &n, verbose);
+			returncode = mod_from_mpq (A, rat_A, &n, verbose, B1, B2);
 		    }
 		else
 		    {
@@ -1340,13 +1345,13 @@ main (int argc, char *argv[])
 		  exit (EXIT_FAILURE);
                 }
 
-	      returncode = mod_from_mpq (x, rat_x0, &n, verbose);
+	      returncode = mod_from_mpq (x, rat_x0, &n, verbose, B1, B2);
 	      if (returncode != ECM_NO_FACTOR_FOUND)
                   goto free_all1;
 
 	      if (specific_y0)
 		{
-		  returncode = mod_from_mpq (y, rat_y0, &n, verbose);
+		  returncode = mod_from_mpq (y, rat_y0, &n, verbose, B1, B2);
 		  if (returncode != ECM_NO_FACTOR_FOUND)
                   goto free_all1;
 		}
@@ -1602,6 +1607,10 @@ main (int argc, char *argv[])
 #endif
 
       /* now call the ecm library */
+      params->curve_param = ECM_PARAM_DEFAULT;
+      mpz_set (params->B2actual, params->B2);
+      mpz_set_ui (params->gpu_factor_sigmas, 0);
+      mpz_set_ui (params->gpu_factor_stages, 0);
       if (result == ECM_NO_FACTOR_FOUND)
         /* if torsion was used, some factor may have been found... */
         result = ecm_factor (f, n.n, B1, params);
@@ -1630,23 +1639,41 @@ main (int argc, char *argv[])
 
       if (result != ECM_NO_FACTOR_FOUND)
         {
-          mpz_t tmp_factor;
+          mpz_t tmp_factor, curve_sigma, factor_sigmas, factor_stages;
+          int factor_step;
           returncode = 0;
           mpz_init (tmp_factor);
+          mpz_init_set (curve_sigma, params->sigma);
+          mpz_init_set (factor_sigmas, params->gpu_factor_sigmas);
+          mpz_init_set (factor_stages, params->gpu_factor_stages);
           do 
             {
+              factor_step = result;
               if (params->gpu)
+                {
                   /* gpu returns multiple factors as f = f0 + f1*n + ... + fk*n^k */
                   mpz_fdiv_qr (f, tmp_factor, f, orig_n);
+                  mpz_fdiv_r_2exp (curve_sigma, factor_sigmas, 64);
+                  mpz_fdiv_q_2exp (factor_sigmas, factor_sigmas, 64);
+                  if (mpz_sgn (factor_stages))
+                    {
+                      factor_step = (int) (mpz_get_ui (factor_stages) & 3);
+                      mpz_fdiv_q_2exp (factor_stages, factor_stages, 2);
+                    }
+                }
               else
                   mpz_set (tmp_factor, f);
 
-              returncode = process_newfactor (tmp_factor, result, &n, method,
+              returncode = process_newfactor (tmp_factor, factor_step, &n, method,
                                  returncode, params->gpu, &cnt, &resume_wasPrp,
-                                 resume_lastfac, resumefile, verbose, deep);
+                                 resume_lastfac, resumefile, verbose, deep,
+                                 params, curve_sigma, B1);
             } while (params->gpu && mpz_cmp_ui (f, 0) != 0 
                                  && returncode != ECM_INPUT_NUMBER_FOUND);
           mpz_clear (tmp_factor);
+          mpz_clear (curve_sigma);
+          mpz_clear (factor_sigmas);
+          mpz_clear (factor_stages);
         }
 
       /* if quiet mode, prints remaining cofactor after last curve */

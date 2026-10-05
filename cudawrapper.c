@@ -10,7 +10,8 @@
 /* Try to reduce all composite factors to primes.
  * This can be hard if factors overlap e.g. (a*b, a*c*d, b*c)
  */
-void reducefactors (mpz_t *factors, int *array_found, unsigned int nb_curves)
+void reducefactors (mpz_t *factors, int *array_found, unsigned int nb_curves,
+                    mpz_t sigmas, mpz_t stages, uint64_t firstsigma)
 {
   unsigned int i, j;
   unsigned int found;
@@ -122,6 +123,22 @@ void reducefactors (mpz_t *factors, int *array_found, unsigned int nb_curves)
   } while (updates > 0);
 
   outputf (OUTPUT_DEVVERBOSE, "GPU: Reduced to %d factors\n", found);
+  /* Reduction sorts and splits factors. Recover an originating curve while
+     the original factors and their stage numbers are still available. */
+  mpz_set_ui (sigmas, 0);
+  mpz_set_ui (stages, 0);
+  for (i = found; i-- > 0; )
+    {
+      for (j = 0; j < nb_curves; j++)
+        if (array_found[j] != ECM_NO_FACTOR_FOUND &&
+            mpz_divisible_p (factors[j], reduced[i])) break;
+      ASSERT_ALWAYS (j < nb_curves);
+      mpz_set_uint64 (gcd, firstsigma + j);
+      mpz_mul_2exp (sigmas, sigmas, 64);
+      mpz_add (sigmas, sigmas, gcd);
+      mpz_mul_2exp (stages, stages, 2);
+      mpz_add_ui (stages, stages, ABS (array_found[j]));
+    }
   /* write out reduced[i], update array_found */
   for (i = 0; i < found; i++)
     {
@@ -279,6 +296,7 @@ gpu_ecm (mpz_t f, const ecm_params params, ecm_params mutable_params, mpz_t n, d
           &root_params,
           B1, &mutable_params->k, params->S, params->use_ntt, &po2, &dF,
                               params->TreeFilename, params->maxmem, Fermat, modulus);
+  mpz_set (mutable_params->B2actual, B2);
   if (youpi == ECM_ERROR)
       goto end_gpu_ecm;
 
@@ -308,6 +326,7 @@ gpu_ecm (mpz_t f, const ecm_params params, ecm_params mutable_params, mpz_t n, d
   nb_curves = params->gpu_number_of_curves;
 
   ASSERT (params->sigma_is_A == 0);
+  mutable_params->curve_param = params->param;
   {
     mpz_t limit;
     mpz_init_set_ui (limit, 1);
@@ -514,7 +533,9 @@ gpu_ecm (mpz_t f, const ecm_params params, ecm_params mutable_params, mpz_t n, d
 
 end_gpu_ecm_factors:
 
-  reducefactors(factors, array_found, nb_curves);
+  reducefactors (factors, array_found, nb_curves,
+                  mutable_params->gpu_factor_sigmas,
+                  mutable_params->gpu_factor_stages, firstsigma_ui);
 
   /* If f0, ,fk are the factors found (in stage 1 or 2)
    * f = f0 + f1*n + .. + fk*n^k

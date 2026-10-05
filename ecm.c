@@ -1819,7 +1819,7 @@ ecm (mpz_t f, mpz_t x, mpz_t y, int param, mpz_t sigma, mpz_t n, mpz_t go,
      (*stop_asap)(void), mpz_t batch_s, double *batch_last_B1_used,
      ATTRIBUTE_UNUSED double gw_k, ATTRIBUTE_UNUSED unsigned long gw_b,
      ATTRIBUTE_UNUSED unsigned long gw_n, ATTRIBUTE_UNUSED signed long gw_c,
-     ATTRIBUTE_UNUSED signed long gw_cl_flag)
+     ATTRIBUTE_UNUSED signed long gw_cl_flag, int *curve_param, mpz_ptr B2actual)
 {
   int youpi = ECM_NO_FACTOR_FOUND;
   int base2 = 0;  /* If n is of form 2^n[+-]1, set base to [+-]n */
@@ -1878,6 +1878,7 @@ ecm (mpz_t f, mpz_t x, mpz_t y, int param, mpz_t sigma, mpz_t n, mpz_t go,
   /* If the parametrization is not given, choose it. */
   if (param == ECM_PARAM_DEFAULT)
     param = get_default_param (sigma_is_A, *B1done, repr);
+  if (curve_param != NULL) *curve_param = param;
   /* when dealing with several input numbers, if we had already computed
      batch_s, but the new number uses the base-2 representation, then we
      are forced to use ECM_PARAM_SUYAMA, and we reset batch_s to 1 to avoid
@@ -1991,6 +1992,7 @@ ecm (mpz_t f, mpz_t x, mpz_t y, int param, mpz_t sigma, mpz_t n, mpz_t go,
   /* if the user gave B2, print that B2 on the Using B1=..., B2=... line */
   if(!ECM_IS_DEFAULT_B2(B2_parm))
     mpz_set (B2, B2_parm);
+  if (B2actual != NULL) mpz_set (B2actual, B2);
 
   if (youpi == ECM_ERROR)
       goto end_of_ecm;

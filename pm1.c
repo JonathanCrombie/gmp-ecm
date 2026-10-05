@@ -364,7 +364,7 @@ pm1 (mpz_t f, mpz_t p, mpz_t N, mpz_t go, double *B1done, double B1,
      mpz_t B2min_parm, mpz_t B2_parm, unsigned long k, 
      int verbose, int repr, int use_ntt, FILE *os, FILE *es, 
      char *chkfilename, char *TreeFilename, double maxmem, 
-     gmp_randstate_t rng, int (*stop_asap)(void))
+     gmp_randstate_t rng, int (*stop_asap)(void), mpz_ptr B2actual)
 {
   int youpi = ECM_NO_FACTOR_FOUND;
   long st;
@@ -531,6 +531,7 @@ pm1 (mpz_t f, mpz_t p, mpz_t N, mpz_t go, double *B1done, double B1,
     }
   
   /* Print B1, B2, polynomial and x0 */
+  if (B2actual != NULL) mpz_set (B2actual, B2);
   print_B1_B2_poly (OUTPUT_NORMAL, ECM_PM1, B1, *B1done, B2min_parm, B2min, 
                     B2, 1, p, 0, 0, NULL, 0, 0);
 
