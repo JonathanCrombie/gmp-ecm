@@ -1,4 +1,4 @@
-# A listing of the Codex branch changes
+# A combined listing of the brent_factors_logging and merged parent branch changes
 
 ## 1. Parameterization 3 stage-1 continuation
 
@@ -53,7 +53,38 @@ Commit: `f2ec9a5`
 | `gw_ecmstag1.c` | Open the GWNUM stage-1 Lucas-chain file with `rb`. |
 | `LucasChainGenerator/src/LucasChainGen.c` | Change eleven file-opening modes to `rb`, `wb`, or `ab` for chain records, pending work, and restart data. |
 
-## 6. Brent factor logging with optional external group orders
+## 6. GWNUM support for parameterization 3
+
+Commit: `902db13`
+
+| Modified source file | Brief description |
+| --- | --- |
+| `ecm.c` | Allow GWNUM stage 1 for parameterization 3; avoid repeating completed work or replacing its residue, and compute the batch exponent only when needed. |
+| `gw_ecmstag1.c` | Finish or interrupt stage 1 without an extra doubling when continuation requires no new power of two, in both the 32-bit and 64-bit interfaces. |
+| `main.c` | Compute the batch exponent when `-bsaves` requests it, even if GWNUM handled stage 1. |
+
+Follow-up commit `a18ad3c` restores non-executable file permissions on these three source files.
+
+## 7. Combined GPU and GWNUM build fixes
+
+Commit: `c4cfe49`
+
+| Modified source file | Brief description |
+| --- | --- |
+| `Fgw.c` | Remove substitute C++ exception and static-initialization guard functions so the real runtime supplies them. |
+| `configure.ac` | Link GWNUM with `libstdc++` as well as pthreads. |
+| `acinclude.m4` | Use `CPPFLAGS` for the CGBN header check and keep GMP linker flags out of CUDA compiler flags. |
+
+## 8. MSVC x64 performance improvements
+
+Commit: `4ba74da`
+
+| Modified source file | Brief description |
+| --- | --- |
+| `longlong.h` | Use `_umul128` for full 64-by-64-bit multiplication under MSVC x64, accelerating arithmetic used in stage 2. |
+| `ecm-params.h` | Select the x86-64 tuning parameters for native MSVC x64 builds; exclude ARM64EC. |
+
+## 9. Brent factor logging with optional external group orders
 
 | Modified source file | Brief description |
 | --- | --- |
@@ -64,3 +95,16 @@ Commit: `f2ec9a5`
 | `Makefile.am`, `build.vs/{ecm,ecm_gpu,multiecm}/*.vcxproj*` | Include CLI logging in Linux and Windows builds; distribute focused tests. |
 | `tests/test-brent-logging.py`, `tests/grouporder-stub.c` | Check real helpers, missing/failed helpers, metadata, bounds, GPU attribution, and concurrent appends. |
 | `README`, `.gitignore` | Document the external helper contract and ignore local validation build artifacts. |
+
+## 10. Windows Lucas-chain file lookup
+
+Commit: `a72a165`
+
+| Modified source file | Brief description |
+| --- | --- |
+| `auxlib.c`, `lchain.h` | Share binary file lookup: working directory first, then beside the executable on Windows if the local file is absent; support Unicode executable paths. |
+| `ecm.c`, `gw_ecmstag1.c` | Use the shared lookup for CPU ECM and GWNUM, retaining PRAC fallback without changing the working directory. |
+| `Makefile.am` | Include the new header and lookup regression test in source distributions. |
+| `tests/test-lchain-path.py` | Check lookup precedence, missing files, local open errors, Unicode paths, PATH invocation, and unchanged residues on Windows. |
+
+
