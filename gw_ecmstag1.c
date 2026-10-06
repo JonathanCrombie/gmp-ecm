@@ -47,6 +47,7 @@ on 20 Nov. 2025:
 #include "math.h"
 #include "memory.h"
 #include "gw_ecmstag1.h"
+#include "lchain.h"
 
 /* PBMcL additions  for Lucas chain codes */
 
@@ -1311,7 +1312,7 @@ int normalize (
 \
 	if( B1 > *B1_done )\
 	{\
-		chain_code_file = fopen("Lchain_codes.dat", "r");\
+		chain_code_file = __ecm_open_lchain_file ();\
 		if(chain_code_file != (FILE *)NULL )\
 		{\
 			using_code_file = 1;\

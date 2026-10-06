@@ -25,6 +25,11 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #include <stdarg.h>
 #include <gmp.h>
 #include "ecm-impl.h"
+#include "lchain.h"
+#include <errno.h>
+#ifdef _WIN32
+#include <wchar.h>
+#endif
 
 #if HAVE_SYS_TIME_H
 # include <sys/time.h>
@@ -152,6 +157,34 @@ cputime (void)
 }
 
 #endif /* defining cputime () */
+
+/* Prefer a working-directory file. On Windows, also try beside the executable
+   when that file is absent, without changing the process working directory. */
+FILE *
+__ecm_open_lchain_file (void)
+{
+  FILE *file = fopen ("Lchain_codes.dat", "rb");
+#ifdef _WIN32
+  if (file == NULL && errno == ENOENT)
+    {
+      wchar_t path[32768];
+      wchar_t *name;
+      DWORD length = GetModuleFileNameW (NULL, path,
+                                         sizeof (path) / sizeof (*path));
+      if (length == 0 || length >= sizeof (path) / sizeof (*path))
+        return NULL;
+      name = wcsrchr (path, L'\\');
+      if (name != NULL && name - path + 1 +
+          sizeof (L"Lchain_codes.dat") / sizeof (*path) <=
+          sizeof (path) / sizeof (*path))
+        {
+          wcscpy (name + 1, L"Lchain_codes.dat");
+          file = _wfopen (path, L"rb");
+        }
+    }
+#endif
+  return file;
+}
 
 /* ellapsed time (in milliseconds) between st0 and st1 (values of cputime) */
 long
