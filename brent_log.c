@@ -251,7 +251,7 @@ write_record (const char *record)
 }
 
 void
-append_brent_factor (const mpcandi_t *candidate, const mpz_t factor, int prime,
+append_brent_factor (const mpcandi_t *candidate, const mpz_t factor, int prime, int method,
                       int param, mpz_srcptr sigma, double B1, mpz_srcptr B2, FILE *out)
 {
   char path[HELPER_PATH_SIZE], *factor_text = NULL, *sigma_text = NULL;
@@ -259,7 +259,8 @@ append_brent_factor (const mpcandi_t *candidate, const mpz_t factor, int prime,
   char *order = NULL, *factored = NULL;
   const char *group_field = "";
   char *group = NULL;
-  int have_sigma = param >= 0 && param <= 3 && sigma && mpz_sgn (sigma) > 0;
+  int have_sigma = method == ECM_ECM && param >= 0 && param <= 3 &&
+                   sigma && mpz_sgn (sigma) > 0;
 #ifdef _WIN32
   const char *newline = "\r\n";
 #else
@@ -268,7 +269,8 @@ append_brent_factor (const mpcandi_t *candidate, const mpz_t factor, int prime,
   if (!candidate->brent_label[0]) return;
   if (ECM_IS_DEFAULT_B2 (B2)) gmp_asprintf (&bounds, "; B1=%.0f, B2=auto", B1);
   else gmp_asprintf (&bounds, "; B1=%.0f, B2=%Zd", B1, B2);
-  if (have_sigma) gmp_asprintf (&curve, "; Sigma: %d:%Zd", param, sigma);
+  if (method == ECM_PM1) gmp_asprintf (&curve, "; Sigma: Not Applicable");
+  else if (have_sigma) gmp_asprintf (&curve, "; Sigma: %d:%Zd", param, sigma);
   else gmp_asprintf (&curve, "; Sigma: unavailable");
 
   if (prime && have_sigma && mpz_cmp_ui (factor, 2) > 0 && helper_path (path))

@@ -103,7 +103,8 @@ with tempfile.TemporaryDirectory(prefix='ECM Brent logging ') as directory:
     check('10403;' in entries[0] and 'Group Order:' not in entries[0], entries)
     for method in ('-pm1', '-pp1'):
         output, entries = run([method, '-x0', '3', '100'])
-        check(all('Group Order:' not in e and 'Sigma: unavailable' in e for e in entries), entries)
+        sigma_text = 'Sigma: Not Applicable' if method == '-pm1' else 'Sigma: unavailable'
+        check(all('Group Order:' not in e and sigma_text in e for e in entries), entries)
         bound = re.search(r'Using B1=100, B2=(?:\d+-)?(\d+)', output)[1]
         check(all(f'B2={bound}' in e for e in entries), entries)
     _, entries = run(['-sigma', '0:6', '100'], '3 5+M 122')

@@ -181,6 +181,9 @@
     <CudaCompile Include="..\..\cgbn_stage1.cu">
       <Filter>Source Files</Filter>
     </CudaCompile>
+    <CudaCompile Include="..\..\cgbn_pm1.cu">
+      <Filter>Source Files</Filter>
+    </CudaCompile>
   </ItemGroup>
   <ItemGroup>
     <YASM Include="..\assembler\mulredc.asm">

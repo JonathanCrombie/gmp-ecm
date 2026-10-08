@@ -209,7 +209,7 @@ process_newfactor (mpz_t g, int result, mpcandi_t *n, int method,
           printf ("\n");
         }
 
-      append_brent_factor (n, f, factor_is_prime,
+      append_brent_factor (n, f, factor_is_prime, method,
                             method == ECM_ECM && params->sigma_is_A == 0
                               ? params->curve_param : ECM_PARAM_DEFAULT,
                             curve_sigma, B1, params->B2actual,

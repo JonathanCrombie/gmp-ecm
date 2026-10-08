@@ -250,6 +250,7 @@
     <ClCompile Include="..\..\eval.c" />
     <ClCompile Include="..\..\getprime_r.c" />
     <ClCompile Include="..\..\main.c" />
+    <ClCompile Include="..\..\pm1_gpu.c" />
     <ClCompile Include="..\..\memusage.c" />
     <ClCompile Include="..\..\random.c" />
     <ClCompile Include="..\..\resume.c" />

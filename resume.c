@@ -30,6 +30,7 @@ SOFTWARE.
 #include <time.h>
 #include <math.h>
 #include <string.h>
+#include <errno.h>
 #ifdef HAVE_ENDIAN_H
 #include <endian.h>
 #elif defined(__APPLE__)
@@ -152,12 +153,30 @@ freadstrn (FILE *fd, char *s, char delim, unsigned int len)
    successfully read, 0 if there are no more lines to read (at EOF) 
 */
 
+static void
+pm1_checkpoint_checksum (mpz_t checksum, const pm1_gpu_state *gpu)
+{
+  uint64_t target = (uint64_t) gpu->target;
+  unsigned long fields[5];
+  unsigned i;
+  fields[0] = mpz_fdiv_ui (gpu->base, CHKSUMMOD);
+  fields[1] = (uint32_t) target;
+  fields[2] = (uint32_t) (target >> 32);
+  fields[3] = (uint32_t) gpu->bits;
+  fields[4] = (uint32_t) (gpu->bits >> 32);
+  for (i = 0; i < 5; ++i)
+    {
+      mpz_mul_ui (checksum, checksum, 65599);
+      mpz_add_ui (checksum, checksum, fields[i]);
+    }
+}
+
 int 
 read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n, 
 		      mpz_t sigma, mpz_t A,
 		      mpz_t x0, mpz_t y0, int *Etype, int *param, 
 		      double *b1, char *program, char *who, char *rtime, 
-		      char *comment, FILE *fd)
+		      char *comment, FILE *fd, pm1_gpu_state *gpu)
 {
   int a, have_method, have_x, have_y, have_z, have_n, have_sigma, have_a, 
       have_b1, have_checksum, have_qx;
@@ -165,6 +184,7 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
   char tag[16];
   char label[sizeof (n->brent_label)];
   mpz_t z;
+  unsigned have_gpu;
   
   while (!feof (fd))
     {
@@ -186,6 +206,8 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
       
       have_method = have_x = have_y = have_z = have_n = have_sigma = have_a = 
                     have_b1 = have_qx = have_checksum = 0;
+      have_gpu = 0;
+      if (gpu) { gpu->present = 0; gpu->bits = 0; gpu->target = 0; }
 
       /* For compatibility reason, param = ECM_PARAM_SUYAMA by default */
       *param = ECM_PARAM_SUYAMA;
@@ -319,6 +341,38 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
                 goto error;
               have_b1 = 1;
             }
+          else if (strncmp (tag, "GPU_", 4) == 0)
+            {
+              if (!gpu)
+                {
+                  fprintf (stderr, "Partial GPU P-1 residue requires -pm1 -gpu -resume.\n");
+                  return -1;
+                }
+              if (strcmp (tag, "GPU_B1") == 0 && !(have_gpu & 1))
+                {
+                  if (fscanf (fd, "%lf", &gpu->target) != 1 ||
+                      !isfinite (gpu->target) || gpu->target < 1 ||
+                      gpu->target > MAX_B1 || floor (gpu->target) != gpu->target)
+                    goto error;
+                  have_gpu |= 1;
+                }
+              else if (strcmp (tag, "GPU_BITS") == 0 && !(have_gpu & 2))
+                {
+                  char value[32], *end;
+                  freadstrn (fd, value, ';', sizeof (value));
+                  if (value[0] < '0' || value[0] > '9') goto error;
+                  errno = 0;
+                  gpu->bits = strtoull (value, &end, 10);
+                  if (errno || *end) goto error;
+                  have_gpu |= 2;
+                }
+              else if (strcmp (tag, "GPU_BASE") == 0 && !(have_gpu & 4))
+                {
+                  if (!mpz_inp_str (gpu->base, fd, 0)) goto error;
+                  have_gpu |= 4;
+                }
+              else goto error;
+            }
           else if (strcmp (tag, "PROGRAM") == 0)
             {
               freadstrn (fd, program, ';', 255);
@@ -348,6 +402,18 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
         }
       
       /* Finished reading tags */
+      if (have_gpu)
+        {
+          if (have_gpu != 7 || !have_checksum || !have_method || !have_x ||
+              have_z || have_y || have_a || have_sigma || *method != ECM_PM1 ||
+              !have_n || !have_b1 || !isfinite (*b1) || *b1 < 0 ||
+              *b1 > gpu->target || mpz_cmp_ui (n->n, 1) <= 0 ||
+              !mpz_odd_p (n->n) || mpz_sgn (gpu->base) < 0 ||
+              mpz_cmp (gpu->base, n->n) >= 0 || mpz_sgn (x) < 0 ||
+              mpz_cmp (x, n->n) >= 0)
+            goto error;
+          gpu->present = 1;
+        }
       if (have_n) strcpy (n->brent_label, label);
       
       /* Handle Prime95 v22 lines. These have no METHOD=ECM field and
@@ -401,6 +467,7 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
           (*method == ECM_ECM && !have_sigma && !have_a))
         {
           fprintf (stderr, "Save file line lacks fields\n");
+          if (gpu) return -1;
           continue;
         }
 
@@ -419,11 +486,13 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
           if (have_z)
             mpz_mul_ui (checksum, checksum, mpz_fdiv_ui (z, CHKSUMMOD));
           mpz_mul_ui (checksum, checksum, (*param+1)%CHKSUMMOD);
+          if (have_gpu) pm1_checkpoint_checksum (checksum, gpu);
           if (mpz_fdiv_ui (checksum, CHKSUMMOD) != saved_checksum)
             {
               fprintf (stderr, "Resume file line has bad checksum %u, expected %u\n", 
                        saved_checksum, (unsigned int) mpz_fdiv_ui (checksum, CHKSUMMOD));
               mpz_clear (checksum);
+              if (gpu) return -1;
               continue;
             }
           mpz_clear (checksum);
@@ -448,6 +517,12 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
       return 1;
       
 error:
+      if (gpu)
+        {
+          if (have_z) mpz_clear (z);
+          fprintf (stderr, "Invalid GPU P-1 resume record.\n");
+          return -1;
+        }
       /* This can occur when reading Prime95 resume files,
          or files that have comment lines in them,
          or files that have a problem with the save line */
@@ -465,7 +540,8 @@ error:
 static void  
 write_resumefile_line (FILE *file, int method, double B1, const mpz_t sigma,
                        int sigma_is_A, int Etype, int param, const mpz_t x, const mpz_t y,
-		       const mpcandi_t *n, const mpz_t x0, const mpz_t y0, const char *comment)
+		       const mpcandi_t *n, const mpz_t x0, const mpz_t y0, const char *comment,
+                       const pm1_gpu_state *gpu)
 {
   mpz_t checksum;
   time_t t;
@@ -507,6 +583,12 @@ write_resumefile_line (FILE *file, int method, double B1, const mpz_t sigma,
   mpz_out_str (file, 16, x);
   mpz_mul_ui (checksum, checksum, mpz_fdiv_ui (n->n, CHKSUMMOD));
   mpz_mul_ui (checksum, checksum, mpz_fdiv_ui (x, CHKSUMMOD));
+  if (gpu && gpu->present)
+    {
+      gmp_fprintf (file, "; GPU_B1=%.0f; GPU_BITS=%" PRIu64 "; GPU_BASE=0x%Zx",
+                   gpu->target, gpu->bits, gpu->base);
+      pm1_checkpoint_checksum (checksum, gpu);
+    }
   fprintf (file, "; CHECKSUM=%u; PROGRAM=GMP-ECM %s;",
            (unsigned int) mpz_fdiv_ui (checksum, CHKSUMMOD), VERSION);
   mpz_clear (checksum);
@@ -595,10 +677,11 @@ int
 write_resumefile (char *fn, int method, ecm_params params,
 		  mpcandi_t *n,
                   const mpz_t orig_n, const mpz_t orig_x0, const mpz_t orig_y0,
-		  const char *comment)
+		  const char *comment, const pm1_gpu_state *gpu)
 {
   FILE *file;
   unsigned int i = 0;
+  int success;
 #if defined(HAVE_FCNTL) && defined(HAVE_FILENO)
   struct flock lock;
   int r, fd;
@@ -620,6 +703,8 @@ write_resumefile (char *fn, int method, ecm_params params,
   if (file == NULL)
     {
       fprintf (stderr, "Could not open file %s for writing\n", fn);
+      mpz_clear (tmp_x);
+      mpz_clear (tmp_y);
       return 0;
     }
   
@@ -640,6 +725,8 @@ write_resumefile (char *fn, int method, ecm_params params,
   if (r != 0)
     {
       fclose (file);
+      mpz_clear (tmp_x);
+      mpz_clear (tmp_y);
       return 0;
     }
 
@@ -661,7 +748,7 @@ write_resumefile (char *fn, int method, ecm_params params,
 				 params->sigma_is_A, params->E->type, 
 				 params->param, 
 				 tmp_x, NULL, n, orig_x0, orig_y0,
-				 comment);
+				 comment, gpu);
 	}
       else
 	{
@@ -670,7 +757,7 @@ write_resumefile (char *fn, int method, ecm_params params,
 				 params->sigma_is_A, params->E->type,
 				 params->param, 
 				 tmp_x, tmp_y, n, orig_x0, orig_y0,
-				 comment);
+				 comment, gpu);
 	}
     }
   else /* gpu case */
@@ -689,7 +776,7 @@ write_resumefile (char *fn, int method, ecm_params params,
                                     we hardcode it in the save file */
 				 ECM_PARAM_BATCH_32BITS_D,
 				 tmp_x, NULL, n, orig_x0, orig_y0, 
-				 comment);
+				 comment, NULL);
           mpz_add_ui (params->sigma, params->sigma, 1);
         }
       mpz_sub_ui (params->sigma, params->sigma, params->gpu_number_of_curves);
@@ -703,12 +790,13 @@ write_resumefile (char *fn, int method, ecm_params params,
   lock.l_len = 1;  
   fcntl (fd, F_SETLKW, &lock); /* F_SETLKW: blocking lock request */
 #endif
-  fclose (file);
+  success = !ferror (file);
+  if (fclose (file)) success = 0;
 
   mpz_clear (tmp_x);
   mpz_clear (tmp_y);
 
-  return 0;
+  return success;
 }
 
 typedef struct {

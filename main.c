@@ -31,6 +31,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #endif
 #include "ecm-impl.h"
 #include "ecm-ecm.h"
+#include "pm1_gpu.h"
 
 #include "config.h"
 
@@ -62,7 +63,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 
 /* #define DEBUG */
 
-static int exit_asap_value = 0;
+static volatile sig_atomic_t exit_asap_value = 0;
 static int exit_asap_signalnr = 0; /* Remembers which signal we received */
 
 void
@@ -84,6 +85,28 @@ int
 stop_asap_test (void)
 {
   return exit_asap_value;
+}
+
+/* Prevent append/resume loops and checkpoint replacement of an input file. */
+static int
+same_file_path (const char *a, const char *b)
+{
+  if (!a || !b) return 0;
+  if (strcmp (a, b) == 0) return 1;
+#ifdef _WIN32
+  {
+    char *aa = _fullpath (NULL, a, 0), *bb = _fullpath (NULL, b, 0);
+    int same = aa && bb && _stricmp (aa, bb) == 0;
+    free (aa); free (bb);
+    return same;
+  }
+#else
+  {
+    struct stat aa, bb;
+    return stat (a, &aa) == 0 && stat (b, &bb) == 0 &&
+           aa.st_dev == bb.st_dev && aa.st_ino == bb.st_ino;
+  }
+#endif
 }
 
 static void
@@ -143,6 +166,7 @@ usage (void)
 #endif
 #ifdef WITH_GPU
     printf ("  -gpu         Use CGBN for computations stage 1.\n");
+    printf ("  -gpubatch n  Batch n different numbers for -pm1 -gpu (default 4096).\n");
     printf ("  -gpudevice n Use device n to execute GPU code (by default, "
                                                           "CUDA chooses)\n");
     printf ("  -gpucurves n Compute on n curves in parallel on the GPU (by "
@@ -338,7 +362,7 @@ brent_kbnc (unsigned long *b, unsigned long *power, signed long *c,
    gcd(den(q), N) is put in r.
  */
 static int
-mod_from_mpq (mpz_t r, mpq_t q, const mpcandi_t *candidate, int verbose,
+mod_from_mpq (mpz_t r, mpq_t q, const mpcandi_t *candidate, int verbose, int method,
               double B1, const mpz_t B2)
 {
     mpz_srcptr N = candidate->n;
@@ -365,7 +389,7 @@ mod_from_mpq (mpz_t r, mpq_t q, const mpcandi_t *candidate, int verbose,
 	else
 	  {
 	    factor_is_prime = mpz_probab_prime_p (r, PROBAB_PRIME_TESTS);
-            append_brent_factor (candidate, r, factor_is_prime,
+            append_brent_factor (candidate, r, factor_is_prime, method,
                                   ECM_PARAM_DEFAULT, NULL, B1, B2,
                                   verbose > 0 ? stdout : stderr);
 	    mpz_init (C);
@@ -508,6 +532,7 @@ main (int argc, char *argv[])
                       /* chooses)                                             */
   unsigned int gpucurves = 0; /* How many curves do we want for GPU code */ 
                               /* (by default CUDA chooses)               */
+  unsigned int gpubatch = 0;
 
   /* check ecm is linked with a compatible library */
   if (mp_bits_per_limb != GMP_NUMB_BITS)
@@ -938,6 +963,21 @@ main (int argc, char *argv[])
           argv += 2;
           argc -= 2;
         }
+      else if ((argc > 2) && (strcmp (argv[1], "-gpubatch") == 0))
+        {
+          char *end;
+          unsigned long value;
+          errno = 0;
+          value = strtoul (argv[2], &end, 10);
+          if (errno || *end || argv[2][0] == '-' || value == 0 || value > 1048576)
+            {
+              fprintf (stderr, "-gpubatch must be an integer from 1 to 1048576.\n");
+              exit (EXIT_FAILURE);
+            }
+          gpubatch = (unsigned int) value;
+          argv += 2;
+          argc -= 2;
+        }
       else if ((argc > 2) && (strcmp (argv[1], "-gpucurves") == 0))
         {
           gpucurves = atoi (argv[2]);
@@ -1099,11 +1139,52 @@ main (int argc, char *argv[])
   params->gpu_number_of_curves = gpucurves; /* If WITH_GPU is not defined or */
                                             /* use_gpu = 0, it has no meaning*/
 
+  if (gpubatch && !(use_gpu && method == ECM_PM1))
+    {
+      fprintf (stderr, "-gpubatch requires -pm1 -gpu.\n");
+      exit (EXIT_FAILURE);
+    }
+  if (use_gpu && method == ECM_PP1)
+    {
+      fprintf (stderr, "GPU P+1 is not implemented.\n");
+      exit (EXIT_FAILURE);
+    }
+  if (use_gpu && method == ECM_PM1)
+    {
+      if (same_file_path (savefilename, resumefilename) ||
+          same_file_path (savefilename, infilename) ||
+          same_file_path (chkfilename, infilename) ||
+          same_file_path (chkfilename, resumefilename) ||
+          same_file_path (chkfilename, savefilename))
+        {
+          fprintf (stderr, "GPU P-1 input, resume, save and checkpoint paths must be distinct.\n");
+          exit (EXIT_FAILURE);
+        }
+      if (count != 1 || gpucurves || specific_A || specific_sigma || specific_y0 ||
+          param != ECM_PARAM_DEFAULT || savefile_s || loadfile_s ||
+          (resumefilename && go.cpOrigExpr) || TreeFilename
+#ifdef HAVE_TORSION
+          || torsion
+#endif
+          )
+        {
+          fprintf (stderr, "GPU P-1 supports one run per input; use -gpubatch instead of -gpucurves. "
+                   "Curve options, batch-exponent files, -treefile and -go with -resume are not supported.\n");
+          exit (EXIT_FAILURE);
+        }
+      if (!isfinite (B1) || !isfinite (B1done) || B1 < 1 || B1 > 3124253146.0 ||
+          B1done > B1 || floor (B1) != B1 || floor (B1done) != B1done)
+        {
+          fprintf (stderr, "GPU P-1 requires integer bounds with 0 <= B1done <= B1 <= 3124253146 and B1 >= 1.\n");
+          exit (EXIT_FAILURE);
+        }
+    }
+
   /* Open resume file for reading, if resuming is requested */
   if (resumefilename != NULL)
     {
       /* -resume should not be used with -gpu */
-      if (use_gpu)
+      if (use_gpu && method != ECM_PM1)
         {
           fprintf (stderr, "Error, -resume not allowed with -gpu\n");
           exit (EXIT_FAILURE);
@@ -1196,7 +1277,7 @@ main (int argc, char *argv[])
      we could save by exiting cleanly, but the waiting for the code to check
      for signals may delay program end unacceptably */
 
-  if (savefilename != NULL)
+  if (savefilename != NULL || (use_gpu && method == ECM_PM1))
     {
       signal (SIGINT, &signal_handler);
       signal (SIGTERM, &signal_handler);
@@ -1211,6 +1292,17 @@ main (int argc, char *argv[])
 
   if (!infilename)
     infile = stdin;
+
+#ifdef WITH_GPU
+  if (use_gpu && method == ECM_PM1)
+    {
+      params->use_ntt = use_ntt;
+      returncode = pm1_gpu_run (infile, resumefile, params, B1, B1done,
+                                gpubatch, primetest, specific_x0, rat_x0, &go,
+                                savefilename, chkfilename, timestamp);
+      goto free_all1;
+    }
+#endif
 
   /* Main loop */
   while ((cnt > 0 || feof (infile) == 0) && !exit_asap_value)
@@ -1229,11 +1321,16 @@ main (int argc, char *argv[])
                        "Error, option -c and -resume are incompatible\n");
               exit (EXIT_FAILURE);
             }
-          if (!read_resumefile_line (&method, x, y, &n, sigma, A, 
+          result = read_resumefile_line (&method, x, y, &n, sigma, A,
 				     orig_x0, orig_y0, &(params->E->type), 
 				     &(params->param), &(params->B1done), 
-				     program, who, rtime, comment, resumefile))
-            break;
+				     program, who, rtime, comment, resumefile, NULL);
+          if (result <= 0)
+            {
+              if (result < 0) returncode = ECM_EXIT_ERROR;
+              break;
+            }
+          result = ECM_NO_FACTOR_FOUND;
 
 	  if (params->E->type == ECM_EC_TYPE_WEIERSTRASS
 	      || params->E->type == ECM_EC_TYPE_HESSIAN
@@ -1323,7 +1420,7 @@ main (int argc, char *argv[])
 	    {
 		if (param != ECM_PARAM_TWISTED_HESSIAN)
 		    {
-			returncode = mod_from_mpq (A, rat_A, &n, verbose, B1, B2);
+			returncode = mod_from_mpq (A, rat_A, &n, verbose, method, B1, B2);
 		    }
 		else
 		    {
@@ -1345,13 +1442,13 @@ main (int argc, char *argv[])
 		  exit (EXIT_FAILURE);
                 }
 
-	      returncode = mod_from_mpq (x, rat_x0, &n, verbose, B1, B2);
+	      returncode = mod_from_mpq (x, rat_x0, &n, verbose, method, B1, B2);
 	      if (returncode != ECM_NO_FACTOR_FOUND)
                   goto free_all1;
 
 	      if (specific_y0)
 		{
-		  returncode = mod_from_mpq (y, rat_y0, &n, verbose, B1, B2);
+		  returncode = mod_from_mpq (y, rat_y0, &n, verbose, method, B1, B2);
 		  if (returncode != ECM_NO_FACTOR_FOUND)
                   goto free_all1;
 		}
@@ -1693,7 +1790,7 @@ main (int argc, char *argv[])
         {
         /* TODO Deal with return code */
 	    write_resumefile (savefilename, method, params, &n,
-			      orig_n, orig_x0, orig_y0, comment);
+			      orig_n, orig_x0, orig_y0, comment, NULL);
         }
 
       mpz_clear (orig_n);
@@ -1760,7 +1857,8 @@ main (int argc, char *argv[])
   /* exit 0 if a factor was found for the last input, except if we exit due
      to a signal */
 #ifdef HAVE_SIGNAL
-  if (returncode == 0 && exit_asap_value != 0)
+  if (exit_asap_value != 0 && (returncode == 0 ||
+      (use_gpu && method == ECM_PM1 && returncode != ECM_EXIT_ERROR)))
     returncode = 143;
 #endif
 

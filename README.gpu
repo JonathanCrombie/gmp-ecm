@@ -141,3 +141,76 @@ In general the best solution is to restart the machine.
 Please report to sethtroisi (by email or on mersenneforum) any problems,
 bugs, or observations.
 
+##############################################################################
+
+AI Extra: Batched P-1 stage 1 on different numbers
+
+  ./ecm -pm1 -gpu -gpubatch 4096 -inp numbers.txt 100000 0
+
+This mode computes P-1 stage 1 for up to 4096 different inputs at a time,
+then performs P-1 stage 2 on the CPU unless B2 is zero. -gpubatch sets the
+batch capacity (default 4096); the final batch may contain fewer numbers.
+-gpudevice selects the CUDA device. -gpucurves remains an ECM-only option.
+Input expressions and Brent labels are accepted by the usual input parser.
+
+Two batches are buffered. A dedicated worker runs GPU stage 1 for the next
+batch while the main thread reports factors, writes saves, and runs CPU
+stage 2 for the preceding batch. Inputs for the next batch are also read
+while the GPU is working. Results and save records remain in input order.
+GPU progress messages are queued during CPU reporting, then displayed at
+the batch boundary; slow console output cannot block CUDA launches. If CPU
+processing takes longer than GPU stage 1, the GPU can still finish the next
+batch and wait for a buffer to become available. Memory use grows to hold
+two batches, but only one batch is resident on the GPU at a time.
+
+Each cooperative group has its own modulus, base and residue. The largest
+modulus in each batch selects the smallest available compiled CGBN width:
+256, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192 or 12288 bits.
+Development builds stop at 1024 bits. Smaller inputs are zero-padded; P-1
+does not require the six spare bits used by the ECM point formulas.
+Unsupported sizes fail explicitly. Group similarly sized inputs for better
+throughput when a file contains very different sizes.
+
+The stage-1 exponent is shared across the batch and cached between batches.
+Stage 1 uses binary Montgomery exponentiation, short CUDA
+launches and sequential CPU stage 2. There is one run per input (-c 1).
+Integer bounds from 1 through 3124253146 are accepted. -x0 (including a
+rational base), per-input -go expressions, completed-residue continuation,
+and the usual CPU stage-2 bounds/arithmetic options are supported.
+Curve options, -treefile, batch-exponent files and -go combined with -resume
+are rejected. GPU stage 2 is not implemented.
+
+Saving and resuming:
+
+  ./ecm -pm1 -gpu -inp numbers.txt -save stage1.save 100000 0
+  ./ecm -pm1 -resume stage1.save 100000 10000000
+  ./ecm -pm1 -gpu -resume stage1.save -save extended.save 200000 0
+
+Completed stage-1 saves retain the ordinary P-1 format and can be resumed
+on either CPU or GPU. Each candidate has a separate record with its label.
+
+For periodic snapshots and Ctrl+C recovery:
+
+  ./ecm -pm1 -gpu -inp numbers.txt -chkpnt active.save -save results.save 1000000
+  ./ecm -pm1 -gpu -resume active.save -save resumed.save 1000000
+
+-chkpnt atomically replaces a snapshot of buffered, unreported work about
+every ten minutes, at batch transitions, and at a clean interruption. While
+console output or CPU stage 2 is busy, a worker snapshot is written at the
+next reporting boundary. The snapshot includes both batches and any input
+already read at a resume-boundary lookahead. -save and -savea also preserve
+buffered partial work on a clean interruption. An
+interrupted binary exponent cannot be represented by a smaller completed
+B1, so partial records add GPU_B1 (target bound), GPU_BITS (consumed bits,
+MSB first) and GPU_BASE (the prepared ordinary base). X is the ordinary
+partial residue; B1 remains the previously completed bound. CHECKSUM covers
+the additional fields. Finish partial records with -pm1 -gpu at their saved
+target bound before extending B1. CPU-only resume rejects these records.
+Different batch sizes and compiled widths may be used when resuming.
+
+A snapshot contains buffered candidates, not the unread remainder of the
+input file. The batch log reports the number read so far. Continue unread
+inputs separately. A completed snapshot can repeat CPU stage 2 if resumed;
+no stage-2 progress is stored. Use distinct input, resume, save and checkpoint
+paths. Checkpoints are owned by one process.
+

@@ -19,6 +19,9 @@
     <ClCompile Include="..\..\main.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\pm1_gpu.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\random.c">
       <Filter>Source Files</Filter>
     </ClCompile>

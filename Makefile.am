@@ -55,6 +55,7 @@ libecm_la_LIBADD = $(MULREDCLIBRARY) -lpthread
 if WANT_GPU 
   libecm_la_SOURCES += cudacommon.cu
   libecm_la_SOURCES += cgbn_stage1.cu
+  libecm_la_SOURCES += cgbn_pm1.cu
   libecm_la_LIBADD += $(CUDALIB)
   libecm_la_LDFLAGS += $(CUDALDFLAGS)
   ecm_LDFLAGS = $(CUDARPATH)
@@ -66,10 +67,14 @@ noinst_PROGRAMS = tune ecmfactor bench_mulredc aprcl LucasChainGen
 # Most binaries want to link libecm.la, and the ones which don't will
 # have their own _LDADD which overrides the default LDADD here
 LDADD = libecm.la $(GMPLIB)
+ecm_LDADD = $(LDADD)
+if WANT_GPU
+ecm_LDADD += -lpthread
+endif
 
 ecm_CPPFLAGS = -DOUTSIDE_LIBECM
 ecm_CFLAGS = $(OPENMP_CFLAGS) -g
-ecm_SOURCES = auxi.c brent_log.c candi.c eval.c main.c resume.c addlaws.c torsions.c \
+ecm_SOURCES = auxi.c brent_log.c candi.c eval.c main.c pm1_gpu.c resume.c addlaws.c torsions.c \
               getprime_r.c champions.h aprtcle/mpz_aprcl.c memusage.c
 
 tune_SOURCES = mpmod.c tune.c mul_lo.c listz.c auxlib.c ks-multiply.c \
@@ -108,18 +113,23 @@ endif
 include_HEADERS = ecm.h
 noinst_HEADERS = basicdefs.h ecm-impl.h ecm-gmp.h ecm-ecm.h sp.h longlong.h \
                  ecm-params.h mpmod.h ecm-gpu.h torsions.h \
-                 cudacommon.h cgbn_stage1.h \
+                 cudacommon.h cgbn_stage1.h cgbn_pm1.h pm1_gpu.h \
                  addlaws.h getprime_r.h ecm_int.h lchain.h \
                  aprtcle/mpz_aprcl.h aprtcle/jacobi_sum.h
 
 EXTRA_DIST = test.pm1 test.pp1 test.ecm README.lib INSTALL-ecm ecm.xml  \
              tests/test-brent-logging.py tests/grouporder-stub.c tests/test-lchain-path.py \
+             tests/test-gpu-pm1.py tests/test-gpu-pm1-stop.c \
+             tests/gpu-pm1-interrupt.c tests/test-gpu-pm1-interrupt.py \
+             tests/gpu-pm1-pipeline.c tests/test-gpu-pm1-pipeline.py \
+             tools/benchmark-gpu-pm1.py \
+             tools/benchmark-gpu-pm1-pipeline.py \
              x86/params.h ia64/params.h arm/params.h    \
              powerpc64/params.h powerpc32/params.h sparc64/params.h     \
              hppa/params.h mips/params.h x86_64/params.h         \
              generic/params.h testlong.pp1 testlong.pm1 testlong.ecm \
              test.gwnum INSTALL-gwnum gw_ecmstag1.h \
-             getprime_r.h cgbn_stage1.cu \
+             getprime_r.h cgbn_stage1.cu cgbn_pm1.cu \
              test.gpuecm README.gpu c155 \
              test_dummy.save test_prime95.save M877.save bsave.B100.v99 \
 	     M997.save test_Z2102.n LucasChainGenerator/README \
@@ -142,6 +152,10 @@ ecm-params:	bench_mulredc$(EXEEXT) tune$(EXEEXT)
 		./tune >> ecm-params.h
 
 TEST_LIST = tests/t-getprime_r
+if WANT_GPU
+TEST_LIST += tests/test-gpu-pm1-stop
+tests_test_gpu_pm1_stop_SOURCES = tests/test-gpu-pm1-stop.c
+endif
 check_PROGRAMS = ecm$(EXEEXT) $(TEST_LIST)
 
 dist_check_SCRIPTS = test.pp1 test.pm1 test.ecm test.ecmfactor
