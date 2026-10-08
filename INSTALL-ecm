@@ -112,7 +112,8 @@ Instructions to install GMP-ECM:
    "Lchain_codes.dat", using a program (LucasChainGen) included with this
    release. For details on how to build and run LucasChainGen, see the
    README file in the LucasChainGenerator folder. Once the Lchain_codes.dat
-   file is available, and it is moved to the ecm run directory, ecm stage 1
+   file is available in the working directory (or beside the executable on
+   Linux and Windows, when absent from the working directory), ecm stage 1
    with '-param 0' set will use the file to generate a Lucas chain for every
    prime less than or equal to min( B1, file limit), and revert to use
    'prac' if 'end-of-file' is reached.

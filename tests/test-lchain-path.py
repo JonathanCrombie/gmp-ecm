@@ -1,18 +1,24 @@
-"""Windows integration test: python tests/test-lchain-path.py build-msvc/bin/ecm.exe"""
+"""Linux/Windows integration test: python tests/test-lchain-path.py /path/to/ecm
+
+LucasChainGen must be beside the supplied ECM executable.
+"""
 import argparse
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('ecm', type=Path)
 args = parser.parse_args()
-if os.name != 'nt':
-    parser.error('The executable-directory fallback is Windows-specific.')
+windows = os.name == 'nt'
+if not windows and sys.platform != 'linux':
+    parser.error('The executable-directory fallback requires Windows or Linux.')
 source = args.ecm.resolve()
+generator = 'LucasChainGen.exe' if windows else 'LucasChainGen'
 checks = 0
 
 
@@ -29,7 +35,7 @@ with tempfile.TemporaryDirectory(prefix='ECM Lucas lookup ') as directory:
     binary.mkdir()
     work = root / 'working directory'
     work.mkdir()
-    for item in [source, source.parent / 'LucasChainGen.exe',
+    for item in [source, source.parent / generator,
                  *source.parent.glob('*.dll')]:
         shutil.copy2(item, binary / item.name)
     exe = binary / source.name
@@ -37,12 +43,21 @@ with tempfile.TemporaryDirectory(prefix='ECM Lucas lookup ') as directory:
     env = os.environ.copy()
     env['PATH'] = str(binary) + os.pathsep + env.get('PATH', '')
     env.pop('GMPECM_DATADIR', None)
+    result = subprocess.run([str(exe), '-printconfig'], cwd=work, env=env,
+                            capture_output=True, text=True, timeout=30)
+    check(result.returncode == 0, result)
+    modes = [None]
+    if 'Included GWNUM header files version' in result.stdout:
+        modes = ['-force-no-gwnum', '-force-gwnum']
+    if not windows:
+        link = root / 'ecm-link'
+        link.symlink_to(exe)
 
     data = {}
     for bound in (100, 1000):
         generator_work = root / str(bound)
         generator_work.mkdir()
-        result = subprocess.run([str(binary / 'LucasChainGen.exe'), '-B1', str(bound),
+        result = subprocess.run([str(binary / generator), '-B1', str(bound),
                                  '-nT', '1'], cwd=generator_work, env=env,
                                 capture_output=True, text=True, timeout=30)
         check(result.returncode == 0, result)
@@ -50,14 +65,20 @@ with tempfile.TemporaryDirectory(prefix='ECM Lucas lookup ') as directory:
         check(bool(data[bound]) and len(data[bound]) % 8 == 0, bound)
     check(b'\x1a' in data[1000], 'Missing binary-mode EOF-byte coverage')
 
-    def run(mode, expected, via_path=False):
+    def run(mode, expected, via_path=False, via_symlink=False):
         save = work / 'residue.save'
         save.unlink(missing_ok=True)
-        command = [str(exe), mode, '-sigma', '0:42', '-save', save.name, '1000', '0']
-        if via_path:
+        command = [str(exe), '-sigma', '0:42', '-save', save.name, '1000', '0']
+        if mode is not None:
+            command.insert(1, mode)
+        if via_path and windows:
             # Let the child shell search its PATH. CreateProcess otherwise uses
             # the parent's search path when locating an unqualified application.
             command = [os.environ['COMSPEC'], '/d', '/c', source.name, *command[1:]]
+        elif via_path:
+            command[0] = source.name
+        elif via_symlink:
+            command[0] = str(link)
         result = subprocess.run(
             command,
             input=str(2**1279 - 1) + '\n', cwd=work, env=env,
@@ -71,25 +92,35 @@ with tempfile.TemporaryDirectory(prefix='ECM Lucas lookup ') as directory:
         record = dict(re.findall(r'(?:^|;)\s*(\w+)=([^;]*)', save.read_text()))
         return tuple(record[field] for field in ('N', 'B1', 'X', 'CHECKSUM'))
 
-    for mode in ('-force-no-gwnum', '-force-gwnum'):
+    for mode in modes:
         # No file: ordinary PRAC remains available.
         baseline = run(mode, 'missing')
         # Fallback beside the executable, including invocation through PATH.
         (binary / chain).write_bytes(data[1000])
         for via_path in (False, True):
             check(run(mode, 'complete', via_path) == baseline, 'Fallback residue mismatch')
+        if not windows:
+            check(run(mode, 'complete', via_symlink=True) == baseline, 'Symlink residue mismatch')
         # A shorter working-directory file wins over the complete fallback.
         (work / chain).write_bytes(data[100])
         check(run(mode, 'short') == baseline, 'Working-directory precedence mismatch')
         (work / chain).unlink()
-        # An inaccessible local entry is not treated as an absent file.
-        (work / chain).mkdir()
+        # A local open error is not treated as an absent file: use a directory
+        # on Windows and a symlink loop (ELOOP) on Linux.
+        if windows:
+            (work / chain).mkdir()
+        else:
+            (work / chain).symlink_to(chain)
         check(run(mode, 'missing') == baseline, 'Unexpected fallback after local open error')
-        (work / chain).rmdir()
+        if windows:
+            (work / chain).rmdir()
+        else:
+            (work / chain).unlink()
         (binary / chain).unlink()
         # A complete local file also works with no executable-directory copy.
         (work / chain).write_bytes(data[1000])
         check(run(mode, 'complete') == baseline, 'Local residue mismatch')
         (work / chain).unlink()
 
-print(f'PASS: {checks} Windows Lucas-chain lookup checks (CPU ECM and GWNUM)')
+engines = 'CPU ECM and GWNUM' if '-force-gwnum' in modes else 'CPU ECM'
+print(f'PASS: {checks} {sys.platform} Lucas-chain lookup checks ({engines})')

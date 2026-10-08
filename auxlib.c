@@ -29,6 +29,9 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #include <errno.h>
 #ifdef _WIN32
 #include <wchar.h>
+#elif defined (__linux__)
+#include <string.h>
+#include <unistd.h>
 #endif
 
 #if HAVE_SYS_TIME_H
@@ -158,8 +161,8 @@ cputime (void)
 
 #endif /* defining cputime () */
 
-/* Prefer a working-directory file. On Windows, also try beside the executable
-   when that file is absent, without changing the process working directory. */
+/* Prefer a working-directory file. On Windows and Linux, also try beside the
+   executable when that file is absent, without changing the working directory. */
 FILE *
 __ecm_open_lchain_file (void)
 {
@@ -180,6 +183,23 @@ __ecm_open_lchain_file (void)
         {
           wcscpy (name + 1, L"Lchain_codes.dat");
           file = _wfopen (path, L"rb");
+        }
+    }
+#elif defined (__linux__)
+  if (file == NULL && errno == ENOENT)
+    {
+      char path[32768];
+      char *name;
+      ssize_t length = readlink ("/proc/self/exe", path, sizeof (path) - 1);
+      if (length <= 0 || (size_t) length >= sizeof (path) - 1)
+        return NULL;
+      path[length] = '\0';
+      name = strrchr (path, '/');
+      if (name != NULL && (size_t) (name - path) + 1 +
+          sizeof ("Lchain_codes.dat") <= sizeof (path))
+        {
+          strcpy (name + 1, "Lchain_codes.dat");
+          file = fopen (path, "rb");
         }
     }
 #endif
