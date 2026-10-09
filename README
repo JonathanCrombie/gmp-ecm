@@ -3,6 +3,51 @@
 This is the README file for GMP-ECM. (See INSTALL-ecm for installing GMP-ECM
 and the ecm library, and README.lib for using the ecm library.)
 
+
+Parallel independent CPU jobs
+-----------------------------
+
+Use -threads x (default 1, range 1..1024) to run independent CPU jobs for
+ECM, P-1 or P+1. For example:
+
+  ecm -threads 8 -pm1 -inp numbers.txt -save pm1.save 1e6
+  ecm -threads 8 -pp1 -inp numbers.txt -save pp1.save 1e6
+  ecm -threads 8 -c 100 -inp numbers.txt -save curves.save 1e6
+  ecm -threads 8 -resume old.save -save new.save 3e6
+
+Each worker runs one complete CPU calculation. ECM curves on the same input
+can run concurrently. P-1/P+1 normally process different numbers; -c also
+permits independent attempts with different random starts. This option does
+not split one curve or modular multiplication across cores. -threads 1 uses
+the original serial path. -threads greater than 1 currently cannot be
+combined with -gpu or -cgbn.
+
+Results are collected in input order, including console output, Brent factor
+logs and -save/-savea records. For -c, curves stay grouped by input and then
+curve number; for -resume, records retain their original order. Candidates
+finished by an earlier curve may be omitted, just as in serial mode. Already
+running curves can finish after a factor is found; duplicate factors are
+removed before reporting. A bounded queue prevents an early slow job from
+causing unlimited buffering of later results. Output appears when each job
+is collected, rather than as live stage progress from all workers.
+
+With -maxmem, the requested stage-2 memory allowance is divided among the
+workers. Without it, each concurrent stage 2 chooses its usual allocation.
+Worker count, input sizes and stage-2 bounds all affect total memory usage.
+
+Ctrl+C stops reading more jobs, drains the bounded queue and writes valid
+residues for buffered jobs to -save in input order. Some arithmetic routines
+finish their current operation before stopping. Unread inputs remain in the
+input file. The ordinary save format is retained. If -chkpnt or -treefile is
+used, each job gets a separate filename with .job-N appended, so concurrent
+workers never overwrite each other's files. The ordered combined output is
+still the file supplied with -save.
+
+Regression checks:
+  python tests/test-cpu-jobs.py path/to/ecm
+The tests/cpu-jobs-interrupt.c entry point can be linked with main.c compiled
+as ecm_cli_main to test interruption using tests/test-cpu-jobs-interrupt.py.
+
 Table of contents of this file:
 1. Basic usage.
 2. How to use P-1, P+1, and ECM efficiently?

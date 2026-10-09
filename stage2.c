@@ -33,7 +33,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #include "ecm-impl.h"
 #include "sp.h"
 
-extern unsigned int Fermat;
+extern ECM_THREAD_LOCAL unsigned int Fermat;
 
 /* r <- Dickson(n,a)(x) */
 static void 

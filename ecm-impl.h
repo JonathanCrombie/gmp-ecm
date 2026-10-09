@@ -24,6 +24,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #define _ECM_IMPL_H 1
 
 #include "config.h"
+#include "ecm-thread.h"
 #include "basicdefs.h"
 #include "ecm.h"
 #include "sp.h"
@@ -83,7 +84,8 @@ extern size_t mpn_mul_lo_threshold[];
 
 #define ECM_STDOUT __ecm_stdout
 #define ECM_STDERR __ecm_stderr
-extern FILE *ECM_STDOUT, *ECM_STDERR;
+extern ECM_THREAD_LOCAL FILE *ECM_STDOUT, *ECM_STDERR;
+extern ECM_THREAD_LOCAL int __ecm_cpu_worker;
 
 /* #define TIMING_CRT */
 
@@ -678,7 +680,7 @@ unsigned long get_random_ul (void);
 /* Fgw.c */
 #ifdef HAVE_GWNUM
 int  gw_ecm_stage1 (mpz_t, curve *, mpmod_t, double, double *, mpz_t,
-                    double, unsigned long, unsigned long, signed long);
+                    double, unsigned long, unsigned long, signed long, int (*)(void));
 
 /* We will use gwnum if either
 

@@ -57,7 +57,8 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #endif
 
 #define VERBOSE __ECM(verbose)
-static int VERBOSE = OUTPUT_NORMAL;
+static ECM_THREAD_LOCAL int VERBOSE = OUTPUT_NORMAL;
+ECM_THREAD_LOCAL int __ecm_cpu_worker = 0;
 
 void 
 mpz_add_si (mpz_t r, mpz_t s, long i)
@@ -117,8 +118,10 @@ cputime ()
 
   HANDLE hProcess = GetCurrentProcess();
   
-  GetProcessTimes (hProcess, &lpCreationTime, &lpExitTime, &lpKernelTime,
-      &lpUserTime);
+  if (__ecm_cpu_worker)
+    GetThreadTimes(GetCurrentThread(), &lpCreationTime, &lpExitTime, &lpKernelTime, &lpUserTime);
+  else
+    GetProcessTimes (hProcess, &lpCreationTime, &lpExitTime, &lpKernelTime, &lpUserTime);
 
   /* copy FILETIME to a ULARGE_INTEGER as recommended by MSDN docs */
   n.u.LowPart = lpUserTime.dwLowDateTime;
@@ -144,6 +147,13 @@ cputime (void)
 {
   struct rusage rus;
 
+#ifdef CLOCK_THREAD_CPUTIME_ID
+  if (__ecm_cpu_worker) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) == 0)
+      return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+  }
+#endif
   getrusage (RUSAGE_SELF, &rus);
   /* This overflows a 32 bit signed int after 2147483s = 24.85 days */
   return rus.ru_utime.tv_sec * 1000L + rus.ru_utime.tv_usec / 1000L;

@@ -59,13 +59,20 @@ static pthread_once_t gtkey_once = PTHREAD_ONCE_INIT;
 static mpz_t gt;
 static int gt_inited = 0;
 #endif
-unsigned int Fermat;
+ECM_THREAD_LOCAL unsigned int Fermat;
 
 #if THREAD_SAFE_GT > 0
 static void
+free_gtkey (void *p)
+{
+  mpz_clear (*(mpz_t *) p);
+  free (p);
+}
+
+static void
 set_gtkey (void)
 {
-  (void) pthread_key_create (&gtkey, NULL);
+  (void) pthread_key_create (&gtkey, free_gtkey);
 }
 
 static mpz_t *

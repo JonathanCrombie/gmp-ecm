@@ -373,6 +373,21 @@ on each input number. The following options control its behavior.
 <variablelist remap='TP'>
 
   <varlistentry>
+  <term><option>-threads <replaceable>x</replaceable></option></term>
+  <listitem>
+  <para>Run x independent CPU jobs for ECM, P-1 or P+1 (default 1,
+  range 1 to 1024). Curves or input numbers are processed concurrently.
+  Console output, factor logs and save records are collected in input order;
+  curves from -c are grouped by input and curve number. Finished candidates
+  may be omitted. This option currently cannot be combined with -gpu when
+  x is greater than 1. The -maxmem allowance is divided among workers.
+  Checkpoint and tree filenames receive a separate .job-N suffix per job.
+  On interruption, buffered residues are written to -save in input order;
+  unread input remains in the input file.</para>
+  </listitem>
+  </varlistentry>
+
+  <varlistentry>
   <term><option>-c <replaceable>n</replaceable></option></term>
   <listitem>
 <para>Perform <replaceable>n</replaceable> runs on each input number

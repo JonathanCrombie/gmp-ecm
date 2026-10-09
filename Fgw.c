@@ -459,10 +459,17 @@ kbnc_str (double *k, unsigned long *b, unsigned long *n, signed long *c,
   return 0;
 }
 
+static ECM_THREAD_LOCAL int (*gw_stop_callback)(void);
+static int gw_stop_adapter(int unused)
+{
+  (void) unused;
+  return gw_stop_callback && gw_stop_callback();
+}
+
 int 
 gw_ecm_stage1 (mpz_t f, curve *P, mpmod_t modulus, 
 	       double B1, double *B1done, mpz_t go, double gw_k,
-               unsigned long gw_b, unsigned long gw_n, signed long gw_c)
+               unsigned long gw_b, unsigned long gw_n, signed long gw_c, int (*stop_asap)(void))
 {
   ecm_uint gw_B1done = *B1done;
   unsigned long siz_x, siz_z, kbnc_size, options; /* Size of gw_x and gw_y as longs */
@@ -470,6 +477,8 @@ gw_ecm_stage1 (mpz_t f, curve *P, mpmod_t modulus,
   mpz_t gw_x, gw_z, gw_A, tmp;
   int youpi;
   char gwnum_msg[8][24];
+
+  gw_stop_callback = stop_asap;
 
   /* P->y must never be zero when calling ecm_mul */
   if( P->y->_mp_size == 0 )
@@ -559,12 +568,12 @@ gw_ecm_stage1 (mpz_t f, curve *P, mpmod_t modulus,
   youpi = gw_ecmStage1_u32 (gw_k, gw_b, gw_n, gw_c, 
       PTR(modulus->orig_modulus), ABSIZ(modulus->orig_modulus), 
       B1, &gw_B1done, PTR(gw_A), ABSIZ(gw_A), 
-      PTR(gw_x), &siz_x, PTR(gw_z), &siz_z, NULL, options);
+      PTR(gw_x), &siz_x, PTR(gw_z), &siz_z, gw_stop_adapter, options);
 #else /* contributed by David Cleaver */
   youpi = gw_ecmStage1_u64 (gw_k, gw_b, gw_n, gw_c,
       PTR(modulus->orig_modulus), ABSIZ(modulus->orig_modulus),
       B1, &gw_B1done, PTR(gw_A), ABSIZ(gw_A),
-      PTR(gw_x), &siz_x, PTR(gw_z), &siz_z, NULL, options);
+      PTR(gw_x), &siz_x, PTR(gw_z), &siz_z, gw_stop_adapter, options);
 #endif
 
   /* Test that not more was written to gw_x and gw_z than we had space for */
@@ -617,7 +626,7 @@ gw_ecm_stage1 (mpz_t f, curve *P, mpmod_t modulus,
     goto end_of_gwecm;
   }
 
-  if (youpi > 1)
+  if (youpi > 1 && youpi != S1_INTERRUPT)
     {
       outputf (OUTPUT_ERROR, "GW stage 1 returned error code %d\n", youpi);
       outputf (OUTPUT_VERBOSE, "GW stage 1 returned error code %d\n", youpi);

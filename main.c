@@ -32,6 +32,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #include "ecm-impl.h"
 #include "ecm-ecm.h"
 #include "pm1_gpu.h"
+#include "cpu_jobs.h"
 
 #include "config.h"
 
@@ -130,6 +131,7 @@ usage (void)
     printf ("  -power n     use x^n for Brent-Suyama's extension\n");
     printf ("  -dickson n   use n-th Dickson's polynomial for Brent-Suyama's extension\n");
     printf ("  -c n         perform n runs for each input\n");
+    printf ("  -threads x   run x independent CPU jobs (default 1); save in input order\n");
     printf ("  -pm1         perform P-1 instead of ECM\n");
     printf ("  -pp1         perform P+1 instead of ECM\n");
     printf ("  -q           quiet mode\n");
@@ -331,7 +333,7 @@ print_config (void)
 #ifdef HAVE_GWNUM
 /* A Brent parent is a multiple of the input, not the number to factor.
    Verify divisibility without constructing that potentially much larger parent. */
-static int
+int
 brent_kbnc (unsigned long *b, unsigned long *power, signed long *c,
             const mpcandi_t *candidate)
 {
@@ -533,6 +535,7 @@ main (int argc, char *argv[])
   unsigned int gpucurves = 0; /* How many curves do we want for GPU code */ 
                               /* (by default CUDA chooses)               */
   unsigned int gpubatch = 0;
+  unsigned int cpu_threads = 1;
 
   /* check ecm is linked with a compatible library */
   if (mp_bits_per_limb != GMP_NUMB_BITS)
@@ -560,7 +563,19 @@ main (int argc, char *argv[])
   /* first look for options */
   while ((argc > 1) && (argv[1][0] == '-'))
     {
-      if (strcmp (argv[1], "-pm1") == 0)
+      if (strcmp (argv[1], "-threads") == 0)
+        {
+          char *end;
+          unsigned long value;
+          if (argc <= 2) { fprintf(stderr, "-threads requires an integer from 1 to 1024.\n"); exit(EXIT_FAILURE); }
+          errno = 0;
+          value = strtoul(argv[2], &end, 10);
+          if (errno || argv[2][0] < '0' || argv[2][0] > '9' || *end || !value || value > 1024)
+            { fprintf(stderr, "-threads requires an integer from 1 to 1024.\n"); exit(EXIT_FAILURE); }
+          cpu_threads = (unsigned int)value;
+          argv += 2; argc -= 2;
+        }
+      else if (strcmp (argv[1], "-pm1") == 0)
 	{
 	  method = ECM_PM1;
 	  argv++;
@@ -1180,6 +1195,23 @@ main (int argc, char *argv[])
         }
     }
 
+  if (cpu_threads > 1)
+    {
+      if (use_gpu)
+        { fprintf(stderr, "-threads currently supports CPU jobs; omit -gpu/-cgbn.\n"); exit(EXIT_FAILURE); }
+      if (count != 1 && (resumefilename || specific_x0))
+        { fprintf(stderr, "-c other than 1 cannot be combined with -resume or -x0.\n"); exit(EXIT_FAILURE); }
+      if (same_file_path(savefilename, resumefilename) || same_file_path(savefilename, infilename))
+        { fprintf(stderr, "Parallel input/resume and save paths must be distinct.\n"); exit(EXIT_FAILURE); }
+      if ((savefile_s || loadfile_s) && !IS_BATCH_MODE(param))
+        { fprintf(stderr, "Batch exponent files require -param 1, 2 or 3.\n"); exit(EXIT_FAILURE); }
+      if (param != ECM_PARAM_DEFAULT && (method != ECM_ECM ||
+          (!IS_BATCH_MODE(param) && param != ECM_PARAM_SUYAMA &&
+           param != ECM_PARAM_WEIERSTRASS && param != ECM_PARAM_HESSIAN &&
+           param != ECM_PARAM_TWISTED_HESSIAN)))
+        { fprintf(stderr, "Invalid -param for parallel CPU jobs.\n"); exit(EXIT_FAILURE); }
+    }
+
   /* Open resume file for reading, if resuming is requested */
   if (resumefilename != NULL)
     {
@@ -1277,7 +1309,7 @@ main (int argc, char *argv[])
      we could save by exiting cleanly, but the waiting for the code to check
      for signals may delay program end unacceptably */
 
-  if (savefilename != NULL || (use_gpu && method == ECM_PM1))
+  if (savefilename != NULL || cpu_threads > 1 || (use_gpu && method == ECM_PM1))
     {
       signal (SIGINT, &signal_handler);
       signal (SIGTERM, &signal_handler);
@@ -1303,6 +1335,30 @@ main (int argc, char *argv[])
       goto free_all1;
     }
 #endif
+
+  if (cpu_threads > 1)
+    {
+      cpu_job_options options;
+      memset(&options, 0, sizeof(options));
+      options.threads = cpu_threads; options.count = count;
+      options.primetest = primetest; options.deep = deep;
+      options.timestamp = timestamp; options.use_ntt = use_ntt;
+      options.param = param; options.specific_x0 = specific_x0;
+      options.specific_y0 = specific_y0; options.specific_A = specific_A;
+      options.x0 = rat_x0; options.y0 = rat_y0; options.A = rat_A;
+      options.sigma = sigma; options.go = &go;
+      options.B1 = B1; options.B1done = B1done; options.savefile = savefilename;
+      options.load_s = loadfile_s; options.save_s = savefile_s;
+      options.load_s_mmap = load_s_mmap; options.save_s_mmap = save_s_mmap;
+#ifdef HAVE_TORSION
+      options.torsion = torsion;
+#endif
+#ifdef HAVE_GWNUM
+      params->gw_cl_flag = gw_cl_flag;
+#endif
+      returncode = cpu_jobs_run(infile, resumefile, params, &options);
+      goto free_all1;
+    }
 
   /* Main loop */
   while ((cnt > 0 || feof (infile) == 0) && !exit_asap_value)

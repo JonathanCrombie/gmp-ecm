@@ -67,14 +67,11 @@ noinst_PROGRAMS = tune ecmfactor bench_mulredc aprcl LucasChainGen
 # Most binaries want to link libecm.la, and the ones which don't will
 # have their own _LDADD which overrides the default LDADD here
 LDADD = libecm.la $(GMPLIB)
-ecm_LDADD = $(LDADD)
-if WANT_GPU
-ecm_LDADD += -lpthread
-endif
+ecm_LDADD = $(LDADD) -lpthread
 
 ecm_CPPFLAGS = -DOUTSIDE_LIBECM
 ecm_CFLAGS = $(OPENMP_CFLAGS) -g
-ecm_SOURCES = auxi.c brent_log.c candi.c eval.c main.c pm1_gpu.c resume.c addlaws.c torsions.c \
+ecm_SOURCES = auxi.c brent_log.c candi.c eval.c main.c cpu_jobs.c pm1_gpu.c resume.c addlaws.c torsions.c \
               getprime_r.c champions.h aprtcle/mpz_aprcl.c memusage.c
 
 tune_SOURCES = mpmod.c tune.c mul_lo.c listz.c auxlib.c ks-multiply.c \
@@ -113,11 +110,12 @@ endif
 include_HEADERS = ecm.h
 noinst_HEADERS = basicdefs.h ecm-impl.h ecm-gmp.h ecm-ecm.h sp.h longlong.h \
                  ecm-params.h mpmod.h ecm-gpu.h torsions.h \
-                 cudacommon.h cgbn_stage1.h cgbn_pm1.h pm1_gpu.h \
+                 cudacommon.h cgbn_stage1.h cgbn_pm1.h pm1_gpu.h cpu_jobs.h ecm-thread.h \
                  addlaws.h getprime_r.h ecm_int.h lchain.h \
                  aprtcle/mpz_aprcl.h aprtcle/jacobi_sum.h
 
 EXTRA_DIST = test.pm1 test.pp1 test.ecm README.lib INSTALL-ecm ecm.xml  \
+             tests/test-cpu-jobs.py tests/cpu-jobs-interrupt.c tests/test-cpu-jobs-interrupt.py \
              tests/test-brent-logging.py tests/grouporder-stub.c tests/test-lchain-path.py \
              tests/test-gpu-pm1.py tests/test-gpu-pm1-stop.c \
              tests/gpu-pm1-interrupt.c tests/test-gpu-pm1-interrupt.py \

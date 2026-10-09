@@ -233,9 +233,9 @@ ecm_mod_1 (mp_ptr xp, mp_size_t xn, mp_limb_t p, mp_size_t n,
 }
 
 #ifdef TIMING_CRT
-int mpzspv_from_mpzv_slow_time = 0;
-int mpzspv_to_mpzv_time = 0;
-int mpzspv_normalise_time = 0;
+ECM_THREAD_LOCAL int mpzspv_from_mpzv_slow_time = 0;
+ECM_THREAD_LOCAL int mpzspv_to_mpzv_time = 0;
+ECM_THREAD_LOCAL int mpzspv_normalise_time = 0;
 #endif
 
 /* convert mpzvi to CRT representation, naive version */

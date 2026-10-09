@@ -30,7 +30,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
   #include "mulredc.h"
 #endif
 
-FILE *ECM_STDOUT, *ECM_STDERR; /* define them here since needed in tune.c */
+ECM_THREAD_LOCAL FILE *ECM_STDOUT, *ECM_STDERR; /* define them here since needed in tune.c */
 
 /* define WANT_ASSERT to check normalization of residues */
 /* #define WANT_ASSERT 1 */

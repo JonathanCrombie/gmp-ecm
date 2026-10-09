@@ -72,10 +72,10 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 
 void rhoinit (int, int); /* used in stage2.c */
 
-static double *rhotable = NULL;
-static int invh = 0;
-static double h = 0.;
-static int tablemax = 0;
+static ECM_THREAD_LOCAL double *rhotable = NULL;
+static ECM_THREAD_LOCAL int invh = 0;
+static ECM_THREAD_LOCAL double h = 0.;
+static ECM_THREAD_LOCAL int tablemax = 0;
 #if defined(TESTDRIVE)
 #define PRIME_PI_MAX 10000
 #define PRIME_PI_MAP(x) (((x)+1)/2)

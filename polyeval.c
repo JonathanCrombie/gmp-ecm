@@ -35,7 +35,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 
 /* #define DEBUG_TREEDATA */
 
-extern unsigned int Fermat;
+extern ECM_THREAD_LOCAL unsigned int Fermat;
 
 #if defined(DEBUG) || defined(DEBUG_TREEDATA)
 void

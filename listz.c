@@ -29,7 +29,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #define ASSERTD(x)
 #endif
 
-extern unsigned int Fermat;
+extern ECM_THREAD_LOCAL unsigned int Fermat;
 
 /* returns a bound on the auxiliary memory needed by list_mult_n */
 int

@@ -48,6 +48,11 @@ on 20 Nov. 2025:
 #include "memory.h"
 #include "gw_ecmstag1.h"
 #include "lchain.h"
+#include "ecm-thread.h"
+extern ECM_THREAD_LOCAL FILE *__ecm_stdout;
+#define gw_stage1_printf(...) fprintf(__ecm_stdout ? __ecm_stdout : stdout, __VA_ARGS__)
+#include <pthread.h>
+void __ecm_gw_thread_prepare(void);
 
 /* PBMcL additions  for Lucas chain codes */
 
@@ -78,7 +83,7 @@ static uint8_t gw_generate_Lucas_chain( uint64_t, uint64_t, chain_element * );
 /* end PBMcL additions */
 
 
-gwhandle gwdata;
+ECM_THREAD_LOCAL gwhandle gwdata;
 
 /* from ecm.cpp */
 
@@ -127,18 +132,18 @@ void gwcopy_xz (
 
 /* Global variables */
 
-giant	N = NULL;		/* Number being factored */
-giant	FAC = NULL;		/* Found factor */
-int	PRAC_SEARCH = 7;
+ECM_THREAD_LOCAL giant	N = NULL;		/* Number being factored */
+ECM_THREAD_LOCAL giant	FAC = NULL;		/* Found factor */
+ECM_THREAD_LOCAL int	PRAC_SEARCH = 7;
 
-gwnum	Ad4 = NULL;
+ECM_THREAD_LOCAL gwnum	Ad4 = NULL;
 
-struct xz A = {NULL, NULL};
-struct xz B = {NULL, NULL};
-struct xz C = {NULL, NULL};
-struct xz T = {NULL, NULL};
-struct xz scr = {NULL, NULL};
-struct xz scr2 = {NULL, NULL};
+ECM_THREAD_LOCAL struct xz A = {NULL, NULL};
+ECM_THREAD_LOCAL struct xz B = {NULL, NULL};
+ECM_THREAD_LOCAL struct xz C = {NULL, NULL};
+ECM_THREAD_LOCAL struct xz T = {NULL, NULL};
+ECM_THREAD_LOCAL struct xz scr = {NULL, NULL};
+ECM_THREAD_LOCAL struct xz scr2 = {NULL, NULL};
 
 /* Bit manipulation macros */
 
@@ -173,8 +178,8 @@ int isPrime (
 /* Use a simple sieve to find prime numbers */
 
 #define MAX_PRIMES	6542
-static	unsigned int *primes = NULL;
-static	struct sieve_info {
+static ECM_THREAD_LOCAL unsigned int *primes = NULL;
+static ECM_THREAD_LOCAL struct sieve_info {
 	uint64_t first_number;
 	unsigned int bit_number;
 	unsigned int num_primes;
@@ -331,7 +336,7 @@ uint8_t gw_generate_Lucas_chain( uint64_t prime, uint64_t chain_code, chain_elem
 		}
 		else
 		{
-			printf("ERROR: gw_generate_Lucas_chain entered with prime = %" PRIu64 " < 11 but != 2, 3, 5 or 7\n", prime);
+			gw_stage1_printf("ERROR: gw_generate_Lucas_chain entered with prime = %" PRIu64 " < 11 but != 2, 3, 5 or 7\n", prime);
 			return 0;
 		}
 	}
@@ -469,7 +474,7 @@ uint8_t gw_generate_Lucas_chain( uint64_t prime, uint64_t chain_code, chain_elem
 		break;
 
 	default: /* should never happen */
-		printf("ERROR: bad chain code start value in gw_generate_Lucas_chain = %u\n", code_fragment);
+		gw_stage1_printf("ERROR: bad chain code start value in gw_generate_Lucas_chain = %u\n", code_fragment);
 		return 0;
 	}
 
@@ -706,7 +711,7 @@ uint8_t gw_generate_Lucas_chain( uint64_t prime, uint64_t chain_code, chain_elem
 					break;
 
 				default: /* should never happen */
-					printf("ERROR: unimplemented code fragment 0xiD, i = %u\n", i);
+					gw_stage1_printf("ERROR: unimplemented code fragment 0xiD, i = %u\n", i);
 					return 0;
 				}
 				break;
@@ -758,7 +763,7 @@ uint8_t gw_generate_Lucas_chain( uint64_t prime, uint64_t chain_code, chain_elem
 	}
 
 	if( Lchain[ chain_length ].value != prime )
-		printf("ERROR: prime/prime code mismatch for p = %" PRIu64 "\n", prime);
+		gw_stage1_printf("ERROR: prime/prime code mismatch for p = %" PRIu64 "\n", prime);
 
 	return chain_length;
 }
@@ -1333,7 +1338,7 @@ int normalize (
 		}\
 		else\
 		{\
-			printf("Lchain_codes.dat file failed to open; using prac\n");\
+			gw_stage1_printf("Lchain_codes.dat file failed to open; using prac\n");\
 		}\
 	}\
 	chain_length = 0; /* not necessary but stops a compiler warning */
@@ -1359,7 +1364,7 @@ int normalize (
                 /* copy LCS[base_indx] x,z states over to current_xz */\
                 gwcopy_xz ( &gwdata, &LCS[base_indx], &current_xz);\
 \
-				printf ("Reached Lchain_codes.dat EOF at p = %" PRIu64 ", reverting to use prac\n", prime);\
+				gw_stage1_printf ("Reached Lchain_codes.dat EOF at p = %" PRIu64 ", reverting to use prac\n", prime);\
 			}\
 		} /* end if( using_code_file) */
 
@@ -1479,7 +1484,7 @@ int gw_ecmStage1_u32 (
 
 /* Setup the assembly code */
 
-	guessCpuType ();
+	__ecm_gw_thread_prepare ();
 	gwinit (&gwdata);
 	if (b)
 		res = gwsetup (&gwdata, k, b, n, c);
@@ -1493,7 +1498,6 @@ int gw_ecmStage1_u32 (
 					   num_being_factored_array_len * 2);
 	if (res == GWERROR_MALLOC) return (S1_MEMORY);
 	if (res) return (S1_CANNOT_DO_IT);
-	StopCheckRoutine = stop_check_proc;
 
 /* If we cannot handle this very efficiently, let caller know it */
 
@@ -1617,7 +1621,6 @@ int gw_ecmStage1_u32 (
 			ell_stage1_finish (&current_xz, &scr, twos_count);
 
 			if (z_array == NULL) {
-				StopCheckRoutine = NULL;
 				normalize (current_xz.x, current_xz.z);
 				if (FAC != NULL) goto bingo;
 				reslong = gwtobinary (&gwdata, current_xz.x, x_array, word_count_32);
@@ -1650,7 +1653,6 @@ int gw_ecmStage1_u32 (
 	ell_stage1_finish (&current_xz, &scr, twos_count);
 
 	if (z_array == NULL) {
-		StopCheckRoutine = NULL;
 		normalize (current_xz.x, current_xz.z);
 		if (FAC != NULL) goto bingo;
 		reslong = gwtobinary (&gwdata, current_xz.x, x_array, word_count_32);
@@ -1674,7 +1676,7 @@ int gw_ecmStage1_u32 (
 
 /* Print a message if we found a factor! */
 
-bingo:	//printf ("ECM found a factor\n");
+bingo:	//gw_stage1_printf ("ECM found a factor\n");
 	if (!testFactor (FAC)) goto error;
 	gianttogw (&gwdata, FAC, x);
 	reslong = gwtobinary (&gwdata, x, x_array, word_count_32);
@@ -1764,7 +1766,7 @@ int gw_ecmStage1_u64 (
 
 /* Setup the assembly code */
 
-	guessCpuType ();
+	__ecm_gw_thread_prepare ();
 	gwinit (&gwdata);
 
 	if (b)
@@ -1776,7 +1778,6 @@ int gw_ecmStage1_u64 (
 
 	if (res == GWERROR_MALLOC) return (S1_MEMORY);
 	if (res) return (S1_CANNOT_DO_IT);
-	StopCheckRoutine = stop_check_proc;
 
 /* If we cannot handle this very efficiently, let caller know it */
 
@@ -1902,7 +1903,6 @@ int gw_ecmStage1_u64 (
 			ell_stage1_finish (&current_xz, &scr, twos_count);
 
 			if (z_array == NULL) {
-				StopCheckRoutine = NULL;
 				normalize (current_xz.x, current_xz.z);
 				if (FAC != NULL) goto bingo;
 				reslong = gwtobinary64 (&gwdata, current_xz.x, x_array, word_count_64);
@@ -1935,7 +1935,6 @@ int gw_ecmStage1_u64 (
 /* Normalize the x value OR return the x,z pair */
 
 	if (z_array == NULL) {
-		StopCheckRoutine = NULL;
 		normalize (current_xz.x, current_xz.z);
 		if (FAC != NULL) goto bingo;
 		reslong = gwtobinary64 (&gwdata, current_xz.x, x_array, word_count_64);
@@ -1959,7 +1958,7 @@ int gw_ecmStage1_u64 (
 
 /* Print a message if we found a factor! */
 
-bingo:	//printf ("ECM found a factor\n");
+bingo:	//gw_stage1_printf ("ECM found a factor\n");
 	if (!testFactor (FAC)) goto error;
 	gianttogw (&gwdata, FAC, x);
 	reslong = gwtobinary64 (&gwdata, x, x_array, word_count_64);
@@ -1983,4 +1982,26 @@ error:	FREE_GWNUMS
 
 no_mem:	ecm_cleanup ();
 	return (S1_MEMORY);
+}
+
+void __ecm_gw_thread_cleanup (void)
+{
+  free (primes); primes = NULL;
+  memset (&si, 0, sizeof (si));
+}
+
+/* Warm up GWNUM global CPU/benchmark initialization before starting workers. */
+static pthread_once_t gw_prepare_once = PTHREAD_ONCE_INIT;
+static void gw_prepare_once_fn(void)
+{
+  gwhandle initial;
+  guessCpuType();
+  gwinit(&initial);
+  /* Initialize GWNUM's shared FFT table locks before concurrent setup. */
+  (void) gwsetup(&initial, 1.0, 2, 521, -1);
+  gwdone(&initial);
+}
+void __ecm_gw_thread_prepare(void)
+{
+  pthread_once(&gw_prepare_once, gw_prepare_once_fn);
 }

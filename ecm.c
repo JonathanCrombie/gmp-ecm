@@ -40,7 +40,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #endif
 
 #ifdef TIMING_CRT
-extern int mpzspv_from_mpzv_slow_time, mpzspv_to_mpzv_time,
+extern ECM_THREAD_LOCAL int mpzspv_from_mpzv_slow_time, mpzspv_to_mpzv_time,
   mpzspv_normalise_time;
 #endif
 
@@ -2209,20 +2209,20 @@ ecm (mpz_t f, mpz_t x, mpz_t y, int param, mpz_t sigma, mpz_t n, mpz_t go,
       {
         gw_k = 1.0; /* indicate that input is large enough for gwnum generic */
         if (verbose > OUTPUT_NORMAL)
-          printf ("Did not find a gwnum poly; will use gwnum generic.\n");
+          fprintf (ECM_STDOUT, "Did not find a gwnum poly; will use gwnum generic.\n");
       }
       else
       {
         gw_k = 0.0; /* indicate that input is too small for gwnum generic */
         if (verbose > OUTPUT_NORMAL)
-          printf ("Did not find a gwnum poly; input number is too small for gwnum generic.\n");
+          fprintf (ECM_STDOUT, "Did not find a gwnum poly; input number is too small for gwnum generic.\n");
       }
     }
 
     if ((gw_b != 0 || (gw_b == 0 && gw_k >= 1.0)) && B1 > *B1done)
       {
-        youpi = gw_ecm_stage1 (f, &P, modulus, B1, B1done, go, gw_k, gw_b, gw_n, gw_c);
-        gw_stage1_done = (*B1done >= B1);
+        youpi = gw_ecm_stage1 (f, &P, modulus, B1, B1done, go, gw_k, gw_b, gw_n, gw_c, stop_asap);
+        gw_stage1_done = (*B1done >= B1 || (stop_asap && stop_asap()));
       }
   }
 

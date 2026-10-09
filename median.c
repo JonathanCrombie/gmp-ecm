@@ -36,7 +36,7 @@ Proc. of ISSAC'03, Philadelphia, 2003.
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 #endif
 
-extern unsigned int Fermat;
+extern ECM_THREAD_LOCAL unsigned int Fermat;
 
 static void list_add_wrapper (listz_t, listz_t, listz_t, unsigned int,
                               unsigned int);
