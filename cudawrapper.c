@@ -335,7 +335,6 @@ gpu_ecm (mpz_t f, const ecm_params params, ecm_params mutable_params, mpz_t n, d
     mpz_sub_ui (limit, limit, nb_curves);
     if (mpz_sgn (params->sigma) == 0)
       {
-        init_randstate (mutable_params->rng);
         mpz_sub_ui (limit, limit, 1);
         mpz_urandomm (mutable_params->sigma, mutable_params->rng, limit);
         mpz_add_ui (mutable_params->sigma, mutable_params->sigma, 2);

@@ -149,7 +149,7 @@ ecm-params:	bench_mulredc$(EXEEXT) tune$(EXEEXT)
 		./bench_mulredc > ecm-params.h
 		./tune >> ecm-params.h
 
-TEST_LIST = tests/t-getprime_r
+TEST_LIST = tests/t-getprime_r tests/t-random-seed
 if WANT_GPU
 TEST_LIST += tests/test-gpu-pm1-stop
 tests_test_gpu_pm1_stop_SOURCES = tests/test-gpu-pm1-stop.c

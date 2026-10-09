@@ -427,8 +427,6 @@ get_curve_from_random_parameter (mpz_t f, mpres_t A, mpres_t x, mpz_t sigma,
 {
   int ret = ECM_ERROR;
 
-  /* initialize the random number generator if not already done */
-  init_randstate (rng);
   /* we perform only a fixed number of tries to find a suitable curve,
      to avoid an infinite loop in corner cases (for example with -param 1,
      there is no valid sigma for n=3, see

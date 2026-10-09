@@ -38,12 +38,22 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 # include <wincrypt.h>
 #endif
 
-/* initialize the random number generator if needed */
+static uint64_t get_random_u64 (void);
+
+/* Seed once when ecm_init creates the generator. GMP's private _mp_seed
+   field is not an initialized flag and must not be used to trigger reseeding. */
 void
 init_randstate (gmp_randstate_t rng)
 {
-  if (mpz_cmp_ui (rng->_mp_seed, 0) == 0)
-    gmp_randseed_ui (rng, get_random_ul ());
+  uint64_t value = get_random_u64 ();
+  mpz_t seed;
+
+  /* unsigned long is only 32 bits on Windows, even on x64. Import
+     the entire native-endian word instead of using gmp_randseed_ui. */
+  mpz_init (seed);
+  mpz_import (seed, 1, 1, sizeof (value), 0, 0, &value);
+  gmp_randseed (rng, seed);
+  mpz_clear (seed);
 }
 
 /* put in 'a' a valid random seed for P-1, i.e. gcd(a,n)=1 and a <> {-1,1} */
@@ -52,7 +62,6 @@ pm1_random_seed (mpz_t a, mpz_t n, gmp_randstate_t randstate)
 {
   mpz_t q;
 
-  init_randstate (randstate);
   mpz_init (q);
   do
     {
@@ -70,7 +79,6 @@ pp1_random_seed (mpz_t seed, mpz_t n, gmp_randstate_t randstate)
 {
   mpz_t q;
 
-  init_randstate (randstate);
   /* need gcd(p^2-4, n) = 1. */
   mpz_init (q);
   do
@@ -86,11 +94,12 @@ pp1_random_seed (mpz_t seed, mpz_t n, gmp_randstate_t randstate)
   mpz_clear (q);
 }
 
-/* Produces a random unsigned long value */
+/* Obtain 64 bits from the OS when available. Retain the existing
+   time-based fallback if the OS random source cannot be read. */
 
 #if defined (_MSC_VER) || defined (__MINGW32__)
-unsigned long 
-get_random_ul (void)
+static uint64_t
+get_random_u64 (void)
 {
   SYSTEMTIME tv;
   HCRYPTPROV Prov;
@@ -99,9 +108,9 @@ get_random_ul (void)
     CRYPT_VERIFYCONTEXT))
     {
       int r;
-      unsigned long rnd;
+      uint64_t rnd;
     
-      r = CryptGenRandom (Prov, sizeof (unsigned long), (void *) &rnd);
+      r = CryptGenRandom (Prov, sizeof (rnd), (void *) &rnd);
       CryptReleaseContext (Prov, 0);
       if (r)
         return rnd;
@@ -110,18 +119,18 @@ get_random_ul (void)
   GetSystemTime (&tv);
   /* This gets us 27 bits of somewhat "random" data based on the time clock.
      It would probably do the program justice if a better random mixing was done
-     in the non-MinGW get_random_ul if /dev/random does not exist */
+     in the non-MinGW get_random_u64 if /dev/urandom does not exist */
   return ((tv.wHour<<22)+(tv.wMinute<<16)+(tv.wSecond<<10)+tv.wMilliseconds) ^
          ((tv.wMilliseconds<<17)+(tv.wMinute<<11)+(tv.wHour<<6)+tv.wSecond);
 }
 
 #else
 
-unsigned long 
-get_random_ul (void)
+static uint64_t
+get_random_u64 (void)
 {
   FILE *rndfd;
-  unsigned long t;
+  uint64_t t;
 
   /* Try /dev/urandom. Warning: this is slow for small numbers or B1. */
   rndfd = fopen ("/dev/urandom", "rb");
@@ -129,14 +138,21 @@ get_random_ul (void)
     {
       int res;
 
-      res = fread (&t, sizeof (unsigned long), 1, rndfd);
+      res = fread (&t, sizeof (t), 1, rndfd);
       fclose (rndfd);
       if (res == 1)
         return t;
     }
 
   /* Multiply by large primes to get a bit of avalanche effect */
-  return (unsigned long) time (NULL) * 1431655751UL +
-         (unsigned long) getpid () * 2147483629UL;
+  return (uint64_t) time (NULL) * 1431655751UL +
+         (uint64_t) getpid () * 2147483629UL;
 }
 #endif
+
+/* Preserve the existing internal unsigned-long interface for callers. */
+unsigned long
+get_random_ul (void)
+{
+  return (unsigned long) get_random_u64 ();
+}

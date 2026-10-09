@@ -73,8 +73,7 @@ ecm_init (ecm_params q)
   q->maxmem = 0.0;
   q->stage1time = 0.0;
   gmp_randinit_default (q->rng);
-  mpz_set_ui (q->rng->_mp_seed, 0); /* trick to tell that the random number
-                                       generator has not been initialized */
+  init_randstate (q->rng);
   q->use_ntt = 1;
   q->stop_asap = NULL;
   q->batch_last_B1_used = 1.0;

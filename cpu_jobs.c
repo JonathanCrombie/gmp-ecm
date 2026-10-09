@@ -400,7 +400,6 @@ int cpu_jobs_run(FILE *input, FILE *resume, ecm_params base, const cpu_job_optio
   if (pthread_cond_init(&pool.completed, NULL)) { pthread_cond_destroy(&pool.work); pthread_mutex_destroy(&pool.mutex); free(ordered); free(threads); return ECM_EXIT_ERROR; }
   pool.stop = base->stop_asap; pool.B1 = o->B1;
   set_verbose(base->verbose);
-  gmp_randseed_ui(base->rng, __ECM(get_random_ul)());
 #ifdef HAVE_GWNUM
   __ecm_gw_thread_prepare();
 #endif

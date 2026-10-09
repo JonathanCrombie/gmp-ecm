@@ -102,7 +102,15 @@ Detailed description of parameters (ecm_params):
         to perform very poorly, or return with an error code.
 * p->stage1time is the time already spent in stage 1 (useful to get a correct
 	estimation of the expected time to find factors).
-* p->rng is a random number generator state.
+* p->rng is a random number generator state. Automatic initialization uses
+        a 64-bit seed from the operating system on Windows and Unix, retaining
+        the existing time-based fallback if the OS random source fails.
+        ecm_init seeds it once; later attempts preserve the stream and honor
+        caller-supplied seeds. All 64 bits are passed to GMP, including on
+        Windows where unsigned long is 32 bits. The parallel CLI master uses
+        the same initializer. Each job receives its own seed containing
+        128 pseudorandom bits.
+        This does not change the sigma ranges or guarantee unique sigmas.
 * p->use_ntt if equal to 1, use NTT in stage 2.
 * p->(*stop_asap) pointer to function: if the function returns zero, continue
 	normally, otherwise exit as soon as possible. May be NULL.
