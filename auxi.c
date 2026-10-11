@@ -140,7 +140,8 @@ process_newfactor (mpz_t g, int result, mpcandi_t *n, int method,
                    int returncode, int gpu, unsigned int *cnt, 
                    int *resume_wasPrp, mpz_t resume_lastfac, 
                    FILE *resumefile, int verbose, int deep,
-                   const ecm_params params, const mpz_t curve_sigma, double B1)
+                   const ecm_params params, const mpz_t curve_sigma,
+                   mpq_srcptr x0, double B1)
 {
   int factor_is_prime = 0;
         /* If a factor was found, indicate whether factor, cofactor are */
@@ -212,7 +213,7 @@ process_newfactor (mpz_t g, int result, mpcandi_t *n, int method,
       append_brent_factor (n, f, factor_is_prime, method,
                             method == ECM_ECM && params->sigma_is_A == 0
                               ? params->curve_param : ECM_PARAM_DEFAULT,
-                            curve_sigma, B1, params->B2actual,
+                            curve_sigma, x0, B1, params->B2actual,
                             verbose > 0 ? stdout : stderr);
       
       if (resumefile != NULL)

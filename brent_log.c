@@ -252,7 +252,8 @@ write_record (const char *record)
 
 void
 append_brent_factor (const mpcandi_t *candidate, const mpz_t factor, int prime, int method,
-                      int param, mpz_srcptr sigma, double B1, mpz_srcptr B2, FILE *out)
+                      int param, mpz_srcptr sigma, mpq_srcptr x0,
+                      double B1, mpz_srcptr B2, FILE *out)
 {
   char path[HELPER_PATH_SIZE], *factor_text = NULL, *sigma_text = NULL;
   char *bounds = NULL, *curve = NULL, *record = NULL, *output = NULL;
@@ -269,7 +270,15 @@ append_brent_factor (const mpcandi_t *candidate, const mpz_t factor, int prime, 
   if (!candidate->brent_label[0]) return;
   if (ECM_IS_DEFAULT_B2 (B2)) gmp_asprintf (&bounds, "; B1=%.0f, B2=auto", B1);
   else gmp_asprintf (&bounds, "; B1=%.0f, B2=%Zd", B1, B2);
-  if (method == ECM_PM1) gmp_asprintf (&curve, "; Sigma: Not Applicable");
+  if (method == ECM_PM1 || method == ECM_PP1)
+    {
+      /* Older saves used zero when the original random base was unknown. */
+      if (x0 && mpz_cmp_ui (mpq_denref (x0), 1) != 0)
+        gmp_asprintf (&curve, "; X0: %Zd/%Zd", mpq_numref (x0), mpq_denref (x0));
+      else if (x0 && mpq_sgn (x0) != 0)
+        gmp_asprintf (&curve, "; X0: %#Zx", mpq_numref (x0));
+      else gmp_asprintf (&curve, "; X0: unavailable");
+    }
   else if (have_sigma) gmp_asprintf (&curve, "; Sigma: %d:%Zd", param, sigma);
   else gmp_asprintf (&curve, "; Sigma: unavailable");
 

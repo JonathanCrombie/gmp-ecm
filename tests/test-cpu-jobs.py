@@ -122,7 +122,7 @@ with tempfile.TemporaryDirectory(prefix='ecm-cpu-jobs-') as tmp:
     a, _, _ = run(['-threads', '4', '-pm1', '-x0', '3', '100', '0'], '\n'.join(lines) + '\n')
     check([line.split(';')[0] for line in log.read_text().splitlines()] ==
           [f'2 {12700 * i}-L 101' for i in range(1, 9)], 'Brent log order')
-    check('Sigma: Not Applicable' in log.read_text(), 'P-1 sigma wording')
+    check('X0: 0x3;' in log.read_text() and 'Sigma:' not in log.read_text(), 'P-1 starting base')
 
     # -one stops a repeated candidate even when its cofactor is composite.
     composite = 101 * 1000003 * (2**127 - 1)

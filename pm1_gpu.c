@@ -1,5 +1,5 @@
-/* P-1 across different input numbers. GPL-3.0-or-later.
-   Pipeline GPU stage 1 with ordinary CPU P-1 stage 2 and CLI reporting. */
+/* P-1/P+1 across different input numbers. GPL-3.0-or-later.
+   Pipeline GPU stage 1 with ordinary CPU stage 2 and CLI reporting. */
 #include "ecm-impl.h"
 #include "pm1_gpu.h"
 #ifdef WITH_GPU
@@ -18,24 +18,50 @@
 
 typedef struct {
   mpcandi_t n;
-  mpz_t x, x0, factor;
+  mpz_t x, factor;
+  mpq_t x0;
   double start;
   pm1_gpu_state gpu;
   int status;
 } pm1_job;
 
+static const char *method_name(int method) {
+  return method==ECM_PP1 ? "P+1" : "P-1";
+}
+
+/* Short, per-number P+1 preloads (-go and N^2-1). The long shared stage-1
+   exponent belongs on the GPU. Aliasing base/output is intentional. */
+static void lucas_preload(mpz_t base, mpz_srcptr exponent, mpz_srcptr n) {
+  mpz_t u, v, cross;
+  mp_bitcnt_t bit=(mp_bitcnt_t)mpz_sizeinbase(exponent, 2);
+  mpz_init_set_ui(u, 2); mpz_init_set(v, base); mpz_init(cross);
+  while(bit) {
+    --bit;
+    mpz_mul(cross, u, v); mpz_sub(cross, cross, base); mpz_mod(cross, cross, n);
+    if(mpz_tstbit(exponent, bit)) {
+      mpz_mul(v, v, v); mpz_sub_ui(v, v, 2); mpz_mod(v, v, n);
+      mpz_set(u, cross);
+    } else {
+      mpz_mul(u, u, u); mpz_sub_ui(u, u, 2); mpz_mod(u, u, n);
+      mpz_set(v, cross);
+    }
+  }
+  mpz_set(base, u);
+  mpz_clears(u, v, cross, NULL);
+}
+
 static void job_init(pm1_job *j) {
   mpcandi_t_init(&j->n);
-  mpz_init(j->x); mpz_init(j->x0); mpz_init(j->factor);
-  mpz_init(j->gpu.base);
+  mpz_init(j->x); mpq_init(j->x0); mpz_init(j->factor);
+  mpz_inits(j->gpu.base, j->gpu.next, NULL);
   j->start=1; j->gpu.present=0; j->gpu.bits=0;
   j->gpu.target=0; j->status=ECM_NO_FACTOR_FOUND;
 }
 
 static void job_clear(pm1_job *j) {
   mpcandi_t_free(&j->n);
-  mpz_clear(j->x); mpz_clear(j->x0); mpz_clear(j->factor);
-  mpz_clear(j->gpu.base);
+  mpz_clear(j->x); mpq_clear(j->x0); mpz_clear(j->factor);
+  mpz_clears(j->gpu.base, j->gpu.next, NULL);
 }
 
 /* 1 = candidate, 0 = EOF, -1 = malformed/unsupported input. */
@@ -55,8 +81,10 @@ static int read_job(pm1_job *j, FILE *input, FILE *resume, ecm_params p,
                           comment, resume, &j->gpu);
     mpz_clears(y, sigma, a, y0, NULL);
     if(r<=0) return r;
-    if(method!=ECM_PM1 || !isfinite(j->start) || j->start<0 || j->start>target) {
-      fprintf(stderr, "GPU P-1 requires P-1 residues with B1 <= requested B1.\n");
+    if(method!=p->method || !isfinite(j->start) || j->start<0 || j->start>target ||
+       floor(j->start)!=j->start) {
+      fprintf(stderr, "GPU %s requires %s residues with integer B1 <= requested B1.\n",
+              method_name(p->method), method_name(p->method));
       return -1;
     }
     if(j->gpu.present && j->gpu.target!=target) {
@@ -65,7 +93,6 @@ static int read_job(pm1_job *j, FILE *input, FILE *resume, ecm_params p,
     }
     if(j->gpu.present) return 1;
     mpz_set(j->gpu.base, j->x);
-    if(mpz_sgn(j->x0)==0) mpz_set(j->x0, j->x);
   } else {
     do {
       if(p->stop_asap && p->stop_asap()) return 0;
@@ -73,6 +100,7 @@ static int read_job(pm1_job *j, FILE *input, FILE *resume, ecm_params p,
       if(!r) return ferror(input) ? -1 : 0;
     } while(mpz_cmp_ui(j->n.n, 1)<=0 || j->n.isPrp);
     if(specific_x0) {
+      mpq_set(j->x0, x0);
       if(!mpz_invert(j->gpu.base, mpq_denref(x0), j->n.n)) {
         mpz_gcd(j->factor, mpq_denref(x0), j->n.n);
         j->status=ECM_FACTOR_FOUND_STEP1;
@@ -82,25 +110,48 @@ static int read_job(pm1_job *j, FILE *input, FILE *resume, ecm_params p,
         mpz_mod(j->gpu.base, j->gpu.base, j->n.n);
       }
     } else if(mpz_even_p(j->n.n)) mpz_set_ui(j->gpu.base, 1);
+    else if(p->method==ECM_PP1) __ECM(pp1_random_seed)(j->gpu.base, j->n.n, p->rng);
     else __ECM(pm1_random_seed)(j->gpu.base, j->n.n, p->rng);
     mpz_mod(j->gpu.base, j->gpu.base, j->n.n);
-    mpz_set(j->x0, j->gpu.base);
+    if(!specific_x0 && mpz_odd_p(j->n.n)) mpq_set_z(j->x0, j->gpu.base);
+    /* Like CPU P+1, a zero fresh starting value requests a random seed. */
+    if(p->method==ECM_PP1 && specific_x0 && !mpz_even_p(j->n.n) &&
+       mpz_sgn(j->gpu.base)==0 && ECM_IS_DEFAULT_B1_DONE(start)) {
+      __ECM(pp1_random_seed)(j->gpu.base, j->n.n, p->rng);
+      mpz_mod(j->gpu.base, j->gpu.base, j->n.n);
+      mpq_set_z(j->x0, j->gpu.base);
+    }
     mpgocandi_fixup_with_N(go, &j->n);
-    if(mpz_cmp_ui(go->Candi.n, 1)>0)
-      mpz_powm(j->gpu.base, j->gpu.base, go->Candi.n, j->n.n);
+    if(mpz_cmp_ui(go->Candi.n, 1)>0) {
+      if(p->method==ECM_PP1) lucas_preload(j->gpu.base, go->Candi.n, j->n.n);
+      else mpz_powm(j->gpu.base, j->gpu.base, go->Candi.n, j->n.n);
+    }
   }
   if(mpz_cmp_ui(j->n.n, 1)<=0) return -1;
   if(mpz_even_p(j->n.n)) {
     mpz_set_ui(j->factor, 2);
     j->status=ECM_FACTOR_FOUND_STEP1;
-  } else if(j->status==ECM_NO_FACTOR_FOUND) {
+  } else if(j->status==ECM_NO_FACTOR_FOUND && p->method==ECM_PM1) {
     mpz_gcd(j->factor, j->gpu.base, j->n.n);
     if(mpz_cmp_ui(j->factor, 1)>0) j->status=ECM_FACTOR_FOUND_STEP1;
+  }
+  /* Match pp1_stage1, including completed-residue continuation. Never repeat
+     preloads for a partial ladder: those returned above with GPU_BASE intact. */
+  if(p->method==ECM_PP1 && j->status==ECM_NO_FACTOR_FOUND &&
+     (target>j->start || (!resume && mpz_cmp_ui(go->Candi.n, 1)>0)) &&
+     (double)mpz_sizeinbase(j->n.n, 2)<=ceil(sqrt(target)) &&
+     mpz_probab_prime_p(j->n.n, PROBAB_PRIME_TESTS)==0) {
+    mpz_t preload;
+    mpz_init(preload);
+    mpz_mul(preload, j->n.n, j->n.n); mpz_sub_ui(preload, preload, 1);
+    lucas_preload(j->gpu.base, preload, j->n.n);
+    mpz_clear(preload);
   }
   j->gpu.target=target;
   j->gpu.bits=0;
   j->gpu.present=(j->status==ECM_NO_FACTOR_FOUND);
-  mpz_set_ui(j->x, 1);
+  mpz_set_ui(j->x, p->method==ECM_PP1 ? 2 : 1);
+  mpz_set(j->gpu.next, j->gpu.base);
   if(j->status!=ECM_NO_FACTOR_FOUND) mpz_set(j->x, j->gpu.base);
   return 1;
 }
@@ -108,7 +159,7 @@ static int read_job(pm1_job *j, FILE *input, FILE *resume, ecm_params p,
 static int save_job(char *filename, pm1_job *j, ecm_params p) {
   mpz_set(p->x, j->x);
   p->B1done=j->start;
-  return write_resumefile(filename, ECM_PM1, p, &j->n, j->n.n,
+  return write_resumefile(filename, p->method, p, &j->n, j->n.n,
                          j->x0, NULL, "", &j->gpu);
 }
 
@@ -123,15 +174,15 @@ typedef struct pm1_message {
 
 typedef struct {
   pm1_job *jobs;
-  mpz_t *values;
-  mpz_ptr *residues;
+  mpz_t *values, *next_values;
+  mpz_ptr *residues, *next;
   mpz_srcptr *bases, *moduli;
   mpz_t exponent;
   unsigned capacity, count, reported, active;
   unsigned snapshot, saved_snapshot;
   uint64_t read_count;
   double target;
-  int device, verbose, running, done, cancel, result;
+  int device, verbose, running, done, cancel, result, method;
   int (*stop_asap)(void);
   pm1_message *messages, *last_message;
 #ifdef _WIN32
@@ -163,10 +214,13 @@ static int batch_init(pm1_batch *b, unsigned capacity) {
   memset(b, 0, sizeof(*b));
   b->jobs=(pm1_job *)calloc(capacity, sizeof(pm1_job));
   b->values=(mpz_t *)malloc((size_t)capacity*sizeof(mpz_t));
+  b->next_values=(mpz_t *)malloc((size_t)capacity*sizeof(mpz_t));
   b->residues=(mpz_ptr *)malloc((size_t)capacity*sizeof(mpz_ptr));
+  b->next=(mpz_ptr *)malloc((size_t)capacity*sizeof(mpz_ptr));
   b->bases=(mpz_srcptr *)malloc((size_t)capacity*sizeof(mpz_srcptr));
   b->moduli=(mpz_srcptr *)malloc((size_t)capacity*sizeof(mpz_srcptr));
-  if(!b->jobs || !b->values || !b->residues || !b->bases || !b->moduli) goto fail;
+  if(!b->jobs || !b->values || !b->next_values || !b->residues || !b->next ||
+     !b->bases || !b->moduli) goto fail;
 #ifdef _WIN32
   InitializeCriticalSection(&b->mutex);
 #else
@@ -174,10 +228,13 @@ static int batch_init(pm1_batch *b, unsigned capacity) {
 #endif
   b->capacity=capacity;
   mpz_init(b->exponent);
-  for(i=0; i<capacity; ++i) { job_init(b->jobs+i); mpz_init(b->values[i]); }
+  for(i=0; i<capacity; ++i) {
+    job_init(b->jobs+i); mpz_init(b->values[i]); mpz_init(b->next_values[i]);
+  }
   return 1;
 fail:
   free(b->jobs); free(b->values); free(b->residues); free(b->bases); free(b->moduli);
+  free(b->next_values); free(b->next);
   return 0;
 }
 
@@ -204,9 +261,12 @@ static void queue_progress(void *arg, const char *text) {
 static void batch_clear(pm1_batch *b) {
   unsigned i;
   batch_progress(b);
-  for(i=0; i<b->capacity; ++i) { job_clear(b->jobs+i); mpz_clear(b->values[i]); }
+  for(i=0; i<b->capacity; ++i) {
+    job_clear(b->jobs+i); mpz_clear(b->values[i]); mpz_clear(b->next_values[i]);
+  }
   mpz_clear(b->exponent);
   free(b->jobs); free(b->values); free(b->residues); free(b->bases); free(b->moduli);
+  free(b->next_values); free(b->next);
 #ifdef _WIN32
   DeleteCriticalSection(&b->mutex);
 #else
@@ -230,7 +290,9 @@ static int publish_snapshot(void *arg, uint64_t bits) {
   for(i=0; i<b->count; ++i) {
     pm1_job *j=b->jobs+i;
     if(j->status!=ECM_NO_FACTOR_FOUND) continue;
-    mpz_set(j->x, b->values[active++]);
+    mpz_set(j->x, b->values[active]);
+    if(b->method==ECM_PP1) mpz_set(j->gpu.next, b->next_values[active]);
+    ++active;
     j->gpu.bits=bits;
     if(bits==length) { j->gpu.present=0; j->start=b->target; }
   }
@@ -248,7 +310,12 @@ static void *batch_worker(void *arg)
   cgbn_pm1_callbacks callbacks={worker_stop, publish_snapshot, queue_progress, b};
   uint64_t bits=b->jobs[0].gpu.bits;
   float milliseconds=0;
-  int result=cgbn_pm1_stage1_run(b->residues, b->bases, b->moduli, b->active,
+  int result;
+  if(b->method==ECM_PP1)
+    result=cgbn_pp1_stage1_run(b->residues, b->next, b->bases, b->moduli, b->active,
+                    b->exponent, &bits, b->device, &milliseconds, b->verbose, &callbacks);
+  else
+    result=cgbn_pm1_stage1_run(b->residues, b->bases, b->moduli, b->active,
                     b->exponent, &bits, b->device, &milliseconds, b->verbose, &callbacks);
   batch_lock(b); b->result=result; b->done=1; batch_unlock(b);
 #ifdef _WIN32
@@ -291,17 +358,20 @@ static int start_batch(pm1_batch *b, ecm_params p, double target,
   char message[160];
   b->active=0;
   b->target=target; b->device=p->gpu_device; b->verbose=p->verbose;
+  b->method=p->method;
   b->stop_asap=p->stop_asap;
   for(i=0; i<b->count; ++i) if(b->jobs[i].status==ECM_NO_FACTOR_FOUND) {
     mpz_set(b->values[b->active], b->jobs[i].x);
     b->residues[b->active]=b->values[b->active];
+    mpz_set(b->next_values[b->active], b->jobs[i].gpu.next);
+    b->next[b->active]=b->next_values[b->active];
     b->bases[b->active]=b->jobs[i].gpu.base;
     b->moduli[b->active]=b->jobs[i].n.n;
     ++b->active;
   }
   if(p->verbose) {
-    snprintf(message, sizeof(message), "GPU P-1 batch: %u inputs (%llu read so far)\n",
-             b->count, (unsigned long long)b->read_count);
+    snprintf(message, sizeof(message), "GPU %s batch: %u inputs (%llu read so far)\n",
+             method_name(p->method), b->count, (unsigned long long)b->read_count);
     queue_progress(b, message);
   }
   if(!b->active) { b->done=1; ++b->snapshot; return 1; }
@@ -363,7 +433,7 @@ static int checkpoint_buffers(char *filename, pm1_batch *a, pm1_batch *b,
   if(ok) { a->saved_snapshot=a->snapshot; b->saved_snapshot=b->snapshot; }
 unlock:
   batch_unlock(b); batch_unlock(a);
-  if(!ok) fprintf(stderr, "Could not write GPU P-1 checkpoint %s\n", filename);
+  if(!ok) fprintf(stderr, "Could not write GPU %s checkpoint %s\n", method_name(p->method), filename);
   return ok;
 }
 
@@ -415,19 +485,26 @@ static int report_batch(pm1_batch *a, pm1_batch *b, pm1_job *pending,
     mpz_set(p->B2actual, p->B2);
     mpz_set(original, j->n.n);
     if(j->status==ECM_NO_FACTOR_FOUND) {
-      mpz_sub_ui(f, j->x, 1);
+      mpz_sub_ui(f, j->x, p->method==ECM_PP1 ? 2 : 1);
       mpz_gcd(j->factor, f, j->n.n);
       if(mpz_cmp_ui(j->factor, 1)>0) j->status=ECM_FACTOR_FOUND_STEP1;
     }
-    if(j->status==ECM_NO_FACTOR_FOUND) j->status=ecm_factor(j->factor, j->n.n, B1, p);
+    if(j->status==ECM_NO_FACTOR_FOUND) {
+      /* Zero is a valid Lucas residue, but also the library's fresh-seed
+         sentinel. Pass the equivalent nonzero representative for B1=1. */
+      if(p->method==ECM_PP1 && mpz_sgn(p->x)==0) mpz_set(p->x, j->n.n);
+      __ecm_original_x0=j->x0;
+      j->status=ecm_factor(j->factor, j->n.n, B1, p);
+      __ecm_original_x0=NULL;
+    }
     else if(verbose>=3) gmp_printf("x=%Zd\n", j->x);
     if(j->status==ECM_ERROR || j->status==ECM_USER_ERROR) { ok=0; break; }
     if(j->status!=ECM_NO_FACTOR_FOUND)
-      *result=process_newfactor(j->factor, j->status, &j->n, ECM_PM1, 0, 0,
-               &remaining, &was_prp, dummy, NULL, verbose, 1, p, p->sigma, B1);
+      *result=process_newfactor(j->factor, j->status, &j->n, p->method, 0, 0,
+               &remaining, &was_prp, dummy, NULL, verbose, 1, p, p->sigma, j->x0, B1);
     if(!verbose && mpz_cmp_ui(j->n.n, 1)>0) gmp_printf("%Zd\n", j->n.n);
     if(savefile && !j->n.isPrp && mpz_cmp_ui(j->n.n, 1)>0 &&
-       !write_resumefile(savefile, ECM_PM1, p, &j->n, original, j->x0, NULL, "", NULL)) {
+       !write_resumefile(savefile, p->method, p, &j->n, original, j->x0, NULL, "", NULL)) {
       ok=0; break;
     }
     ++a->reported;
@@ -488,8 +565,9 @@ int pm1_gpu_run(FILE *input, FILE *resume, ecm_params p,
       for(i=b->reported; i<b->count; ++i) if(!save_job(savefile, b->jobs+i, p)) error=1;
       if(have_pending && !save_job(savefile, &pending, p)) error=1;
     }
-    fprintf(stderr, "GPU P-1 stopped after reading %llu inputs; saved buffered work%s. Unread inputs remain in the input file.\n",
-            (unsigned long long)read_count, savefile || checkpoint ? "" : " nowhere (no save/checkpoint file)");
+    fprintf(stderr, "GPU %s stopped after reading %llu inputs; saved buffered work%s. Unread inputs remain in the input file.\n",
+            method_name(p->method), (unsigned long long)read_count,
+            savefile || checkpoint ? "" : " nowhere (no save/checkpoint file)");
   }
   batch_clear(a); batch_clear(b); job_clear(&pending);
   mpz_clears(saved_exponent, continuation, NULL);

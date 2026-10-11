@@ -294,7 +294,8 @@ pp1 (mpz_t f, mpz_t p, mpz_t n, mpz_t go, double *B1done, double B1,
 
   st = cputime ();
 
-  if (mpz_cmp_ui (p, 0) == 0)
+  /* A completed stage-1 Lucas residue can legitimately be zero. */
+  if (mpz_cmp_ui (p, 0) == 0 && ECM_IS_DEFAULT_B1_DONE (*B1done))
     pp1_random_seed (p, n, rng);
 
   mpz_init_set (B2min, B2min_parm);

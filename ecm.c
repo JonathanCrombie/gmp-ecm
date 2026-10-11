@@ -1707,6 +1707,10 @@ print_B1_B2_poly (int verbosity, int method, double B1, double B1done,
 		    outputf (verbosity, ", twisted Hessian(y=%Zd)", y);
 	    }
         }
+      else if (__ecm_original_x0 &&
+               mpz_cmp_ui (mpq_denref (__ecm_original_x0), 1) != 0)
+        outputf (verbosity, ", x0=%Zd/%Zd", mpq_numref (__ecm_original_x0),
+                 mpq_denref (__ecm_original_x0));
       else if (ECM_IS_DEFAULT_B1_DONE(B1done))
         /* in case of P-1 or P+1, we store the initial point in sigma */
         outputf (verbosity, ", x0=%Zd", sigma);

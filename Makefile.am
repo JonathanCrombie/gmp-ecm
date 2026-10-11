@@ -116,8 +116,10 @@ noinst_HEADERS = basicdefs.h ecm-impl.h ecm-gmp.h ecm-ecm.h sp.h longlong.h \
 
 EXTRA_DIST = test.pm1 test.pp1 test.ecm README.lib INSTALL-ecm ecm.xml  \
              tests/test-cpu-jobs.py tests/cpu-jobs-interrupt.c tests/test-cpu-jobs-interrupt.py \
-             tests/test-brent-logging.py tests/grouporder-stub.c tests/test-lchain-path.py \
+             tests/test-brent-logging.py tests/test-x0-rational.py tests/grouporder-stub.c tests/test-lchain-path.py \
              tests/test-gpu-pm1.py tests/test-gpu-pm1-stop.c \
+             tests/test-gpu-pp1.py tests/test-gpu-pp1-stop.c \
+             tests/gpu-pp1-interrupt.c \
              tests/gpu-pm1-interrupt.c tests/test-gpu-pm1-interrupt.py \
              tests/gpu-pm1-pipeline.c tests/test-gpu-pm1-pipeline.py \
              tools/benchmark-gpu-pm1.py \
@@ -151,8 +153,9 @@ ecm-params:	bench_mulredc$(EXEEXT) tune$(EXEEXT)
 
 TEST_LIST = tests/t-getprime_r tests/t-random-seed
 if WANT_GPU
-TEST_LIST += tests/test-gpu-pm1-stop
+TEST_LIST += tests/test-gpu-pm1-stop tests/test-gpu-pp1-stop
 tests_test_gpu_pm1_stop_SOURCES = tests/test-gpu-pm1-stop.c
+tests_test_gpu_pp1_stop_SOURCES = tests/test-gpu-pp1-stop.c
 endif
 check_PROGRAMS = ecm$(EXEEXT) $(TEST_LIST)
 

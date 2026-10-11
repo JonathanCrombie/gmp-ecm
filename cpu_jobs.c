@@ -25,7 +25,8 @@ typedef struct cpu_job {
   struct cpu_job *next;
   cpu_group *group;
   ecm_params p;
-  mpz_t n, factor, x0, y0;
+  mpz_t n, factor, y0;
+  mpq_t x0;
   FILE *output, *errors;
   char comment[256];
   char *checkpoint, *tree;
@@ -84,7 +85,17 @@ static void *worker(void *arg)
         /* Queued jobs still need a valid curve/base for their save record,
            but should not start another full stage 1 after a stop request. */
         double bound = worker_stop() ? MAX(1.0, j->p->B1done) : pool->B1;
+        /* Explicit -x0 0 also requests a random base. Capture it before
+           ecm_factor overwrites x, just as for automatic fresh jobs. */
+        if (j->p->method != ECM_ECM && mpz_odd_p(j->n) && mpz_sgn(j->p->x) == 0 &&
+            (j->p->method == ECM_PM1 || ECM_IS_DEFAULT_B1_DONE(j->p->B1done))) {
+          if (j->p->method == ECM_PM1) __ECM(pm1_random_seed)(j->p->x, j->n, j->p->rng);
+          else __ECM(pp1_random_seed)(j->p->x, j->n, j->p->rng);
+          mpq_set_z(j->x0, j->p->x);
+        }
+        __ecm_original_x0 = j->p->method != ECM_ECM ? j->x0 : NULL;
         j->result = ecm_factor(j->factor, j->n, bound, j->p);
+        __ecm_original_x0 = NULL;
       }
     /* The library selects an automatic parametrization by value. Persist
        the actual choice so the saved curve can be reconstructed on resume. */
@@ -141,7 +152,8 @@ static void job_free(cpu_job *j)
   if (j->output) fclose(j->output);
   if (j->errors) fclose(j->errors);
   ecm_clear(j->p);
-  mpz_clears(j->n, j->factor, j->x0, j->y0, NULL);
+  mpz_clears(j->n, j->factor, j->y0, NULL);
+  mpq_clear(j->x0);
   group_release(j->group);
   free(j->checkpoint); free(j->tree); free(j);
 }
@@ -152,7 +164,8 @@ static cpu_job *job_new(ecm_params src, unsigned threads, uint64_t id)
   ecm_params_ptr p;
   if (!j) return NULL;
   ecm_init(j->p);
-  mpz_inits(j->n, j->factor, j->x0, j->y0, NULL);
+  mpz_inits(j->n, j->factor, j->y0, NULL);
+  mpq_init(j->x0);
   j->id = id;
   j->output = tmpfile();
   j->errors = tmpfile();
@@ -227,9 +240,11 @@ static int prepare_fresh(cpu_job *j, const cpu_job_options *o)
   p->B1done = o->B1done;
   p->param = o->param;
   mpz_set(p->sigma, o->sigma);
+  if (o->specific_x0 && p->method != ECM_ECM) mpq_set(j->x0, o->x0);
   if (o->specific_x0 && !rational(j, p->x, o->x0)) return 1;
   if (o->specific_y0 && !rational(j, p->y, o->y0)) return 1;
-  mpz_set(j->x0, p->x); mpz_set(j->y0, p->y);
+  if (!o->specific_x0 || p->method == ECM_ECM) mpq_set_z(j->x0, p->x);
+  mpz_set(j->y0, p->y);
   if (o->specific_A) {
     mpz_init(a);
     if (o->param == ECM_PARAM_TWISTED_HESSIAN) {
@@ -266,7 +281,7 @@ static int prepare_fresh(cpu_job *j, const cpu_job_options *o)
   if (!o->specific_x0 && p->method != ECM_ECM && mpz_odd_p(j->n)) {
     if (p->method == ECM_PM1) __ECM(pm1_random_seed)(p->x, j->n, p->rng);
     else __ECM(pp1_random_seed)(p->x, j->n, p->rng);
-    mpz_set(j->x0, p->x);
+    mpq_set_z(j->x0, p->x);
   }
   return 1;
 }
@@ -367,7 +382,7 @@ static int report_job(cpu_job *j, const cpu_job_options *o, int resumed,
     if (mpz_cmp_ui(j->factor, 1) > 0) {
       *returncode = process_newfactor(j->factor, j->result, n, j->p->method,
         0, 0, &remaining, &was_prp, dummy, NULL, verbose, o->deep,
-        j->p, j->p->sigma, o->B1);
+        j->p, j->p->sigma, j->x0, o->B1);
       if (!remaining) g->stopped = 1;
     }
   }

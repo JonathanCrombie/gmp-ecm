@@ -74,11 +74,11 @@ int read_number (mpcandi_t*, FILE*, int, int);
 void print_brent_source (const mpcandi_t *, FILE *);
 int process_newfactor (mpz_t, int, mpcandi_t*, int, int, int, unsigned int*, 
                        int*, mpz_t, FILE*, int, int, const ecm_params,
-                       const mpz_t, double);
+                       const mpz_t, mpq_srcptr, double);
 
 /* brent_log.c: optional external grouporder helper; no PARI linkage. */
 void append_brent_factor (const mpcandi_t *, const mpz_t, int, int, int,
-                          mpz_srcptr, double, mpz_srcptr, FILE *);
+                          mpz_srcptr, mpq_srcptr, double, mpz_srcptr, FILE *);
 
 /* Various logging levels */
 /* OUTPUT_ALWAYS means print always, regardless of verbose value */
@@ -122,11 +122,11 @@ void getprime_clear (void);
 #define FREE_PRIME_TABLE -1.0
 
 /* resume.c */
-/* Partial binary exponentiation for P-1. B1 in the ordinary record remains
+/* Partial binary exponentiation/Lucas ladder for P-1/P+1. B1 remains
    the last completed bound; target and bits describe the unfinished work.
    base and X are ordinary residues, so checkpoints are kernel-width agnostic. */
 typedef struct {
-  mpz_t base;
+  mpz_t base, next; /* next = V_(k+1)(base), used only for P+1 */
   double target;
   uint64_t bits;
   int present;
@@ -134,11 +134,11 @@ typedef struct {
 
 int  read_resumefile_line (int *, mpz_t, mpz_t, mpcandi_t *, 
 			   mpz_t, mpz_t,
-			   mpz_t, mpz_t, int *, int *,
+			   mpq_t, mpz_t, int *, int *,
                            double *, char *, char *, char *, char *, FILE *,
                            pm1_gpu_state *);
 int write_resumefile (char *, int, ecm_params params,
-		      mpcandi_t *, const mpz_t, const mpz_t, const mpz_t,
+		      mpcandi_t *, const mpz_t, const mpq_t, const mpz_t,
 		      const char *, const pm1_gpu_state *);
 int write_s_in_file (const char *, mpz_t, int, uint64_t);
 int read_s_from_file (mpz_t, const char *, int, double); 

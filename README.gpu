@@ -143,12 +143,13 @@ bugs, or observations.
 
 ##############################################################################
 
-AI Extra: Batched P-1 stage 1 on different numbers
+AI Extra: Batched P-1 and P+1 stage 1 on different numbers
 
   ./ecm -pm1 -gpu -gpubatch 4096 -inp numbers.txt 100000 0
+  ./ecm -pp1 -gpu -gpubatch 4096 -inp numbers.txt 100000 0
 
-This mode computes P-1 stage 1 for up to 4096 different inputs at a time,
-then performs P-1 stage 2 on the CPU unless B2 is zero. -gpubatch sets the
+These modes compute stage 1 for up to 4096 different inputs at a time,
+then perform the selected method's stage 2 on the CPU unless B2 is zero. -gpubatch sets the
 batch capacity (default 4096); the final batch may contain fewer numbers.
 -gpudevice selects the CUDA device. -gpucurves remains an ECM-only option.
 Input expressions and Brent labels are accepted by the usual input parser.
@@ -166,13 +167,14 @@ two batches, but only one batch is resident on the GPU at a time.
 Each cooperative group has its own modulus, base and residue. The largest
 modulus in each batch selects the smallest available compiled CGBN width:
 256, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192 or 12288 bits.
-Development builds stop at 1024 bits. Smaller inputs are zero-padded; P-1
+Development builds stop at 1024 bits. Smaller inputs are zero-padded; P-1/P+1
 does not require the six spare bits used by the ECM point formulas.
 Unsupported sizes fail explicitly. Group similarly sized inputs for better
 throughput when a file contains very different sizes.
 
 The stage-1 exponent is shared across the batch and cached between batches.
-Stage 1 uses binary Montgomery exponentiation, short CUDA
+P-1 uses binary Montgomery exponentiation; P+1 uses a binary Lucas ladder.
+Both use short CUDA
 launches and sequential CPU stage 2. There is one run per input (-c 1).
 Integer bounds from 1 through 3124253146 are accepted. -x0 (including a
 rational base), per-input -go expressions, completed-residue continuation,
@@ -213,4 +215,55 @@ input file. The batch log reports the number read so far. Continue unread
 inputs separately. A completed snapshot can repeat CPU stage 2 if resumed;
 no stage-2 progress is stored. Use distinct input, resume, save and checkpoint
 paths. Checkpoints are owned by one process.
+
+P+1 details:
+
+  ./ecm -pp1 -cgbn -inp numbers.txt -save pp1.save 100000 0
+  ./ecm -pp1 -resume pp1.save 100000 10000000
+  ./ecm -pp1 -cgbn -resume pp1.save -save extended.save 200000 0
+
+The same buffering, ordering, options and size limits apply to P+1. -gpu
+and -cgbn are aliases. Each input has an independent starting value A
+(-x0, including rational values, or a random value). The GPU computes
+V_M(A) modulo N using (V_k,V_(k+1)), where M is the shared stage-1 exponent.
+GCD(V_M-2,N), factor logging and stage 2 run on the CPU. -go and the CPU
+P+1 implementation's conditional N^2-1 preload are applied per number
+before the shared GPU work. Extending a completed residue applies N^2-1
+again when the CPU code would, so split and direct runs can differ in
+residue while CPU and GPU runs with the same sequence of bounds agree.
+
+Completed records use the ordinary METHOD=P+1 format. Partial P+1 records
+also require GPU_NEXT=V_(k+1)(GPU_BASE), alongside X=V_k(GPU_BASE), GPU_B1,
+GPU_BITS and GPU_BASE. The checksum covers GPU_NEXT as well. Resume these
+with -pp1 -gpu at the same target B1; CPU resume and -pm1 reject them. A
+partial resume must not repeat either preload. Existing P-1 checkpoint
+records and checksums are unchanged. SIGMA does not apply to P+1;
+BrentFactors.log reports the original starting base for both P-1 and P+1.
+Integers use hexadecimal, for example "X0: 0x36238f4d". Rational -x0 values
+keep their numerator and denominator: -x0 2/7 logs "X0: 2/7" and writes
+X0=2/7 in ordinary saves and partial GPU checkpoints. CPU saves/checkpoints
+and cross-mode resumes also preserve the fraction. Older executables cannot
+read fractional X0 fields; this version still accepts older integer fields.
+This is the base before -go or other preloads, not the stage-1 residue.
+If an older save omitted
+X0 or stored the legacy zero placeholder, the log says "X0: unavailable".
+
+This implementation accelerates independent numbers, not multiple ECM
+curves. To try multiple P+1 starting values on a number, repeat that input
+or run another batch; -c remains restricted to 1. There is no GPU stage 2
+and no PRAC optimization of the GPU Lucas ladder yet. Large batches are
+needed to use the GPU well; single-input performance may favor the CPU.
+
+Correctness checks (requires a CUDA-enabled build):
+
+  python tests/test-gpu-pp1.py ./ecm --batch-data ../Test_Batches
+  python tests/test-x0-rational.py ./ecm --gpu
+
+The GPU make-check suite also includes tests/test-gpu-pp1-stop, which
+interrupts real CUDA launches and checks both Lucas residues against an
+independent GMP companion-matrix calculation before and after resuming.
+tests/gpu-pp1-interrupt.c supplies an optional instrumented CLI (build
+instructions are in its header); pass that executable with --interrupter
+to test ordered partial saves and checkpoints after a real SIGTERM in
+either the first or second buffered batch.
 

@@ -168,7 +168,7 @@ usage (void)
 #endif
 #ifdef WITH_GPU
     printf ("  -gpu         Use CGBN for computations stage 1.\n");
-    printf ("  -gpubatch n  Batch n different numbers for -pm1 -gpu (default 4096).\n");
+    printf ("  -gpubatch n  Batch n inputs for -pm1/-pp1 -gpu (default 4096).\n");
     printf ("  -gpudevice n Use device n to execute GPU code (by default, "
                                                           "CUDA chooses)\n");
     printf ("  -gpucurves n Compute on n curves in parallel on the GPU (by "
@@ -365,7 +365,7 @@ brent_kbnc (unsigned long *b, unsigned long *power, signed long *c,
  */
 static int
 mod_from_mpq (mpz_t r, mpq_t q, const mpcandi_t *candidate, int verbose, int method,
-              double B1, const mpz_t B2)
+              double B1, const mpz_t B2, mpq_srcptr log_x0)
 {
     mpz_srcptr N = candidate->n;
     mpz_t inv, C;
@@ -392,7 +392,7 @@ mod_from_mpq (mpz_t r, mpq_t q, const mpcandi_t *candidate, int verbose, int met
 	  {
 	    factor_is_prime = mpz_probab_prime_p (r, PROBAB_PRIME_TESTS);
             append_brent_factor (candidate, r, factor_is_prime, method,
-                                  ECM_PARAM_DEFAULT, NULL, B1, B2,
+                                  ECM_PARAM_DEFAULT, NULL, log_x0, B1, B2,
                                   verbose > 0 ? stdout : stderr);
 	    mpz_init (C);
 	    mpz_tdiv_q (C, N, r);
@@ -474,7 +474,8 @@ int
 main (int argc, char *argv[])
 {
   char **argv0 = argv;
-  mpz_t x, y, sigma, A, f, orig_x0, orig_y0, B2, B2min, startingB2min, orig_n;
+  mpz_t x, y, sigma, A, f, orig_y0, B2, B2min, startingB2min, orig_n;
+  mpq_t orig_x0;
   mpcandi_t n;
   mpgocandi_t go;
   mpq_t rat_x0, rat_y0, rat_A;
@@ -734,7 +735,8 @@ main (int argc, char *argv[])
         }
       else if ((argc > 2) && (strcmp (argv[1], "-x0")) == 0)
         {
-          if (mpq_set_str (rat_x0, argv[2], 0))
+          if (mpq_set_str (rat_x0, argv[2], 0) ||
+              mpz_sgn (mpq_denref (rat_x0)) == 0)
             {
               fprintf (stderr, "Error, invalid starting point: %s\n", argv[2]);
               exit (EXIT_FAILURE);
@@ -1154,17 +1156,12 @@ main (int argc, char *argv[])
   params->gpu_number_of_curves = gpucurves; /* If WITH_GPU is not defined or */
                                             /* use_gpu = 0, it has no meaning*/
 
-  if (gpubatch && !(use_gpu && method == ECM_PM1))
+  if (gpubatch && !(use_gpu && (method == ECM_PM1 || method == ECM_PP1)))
     {
-      fprintf (stderr, "-gpubatch requires -pm1 -gpu.\n");
+      fprintf (stderr, "-gpubatch requires -pm1 or -pp1 with -gpu.\n");
       exit (EXIT_FAILURE);
     }
-  if (use_gpu && method == ECM_PP1)
-    {
-      fprintf (stderr, "GPU P+1 is not implemented.\n");
-      exit (EXIT_FAILURE);
-    }
-  if (use_gpu && method == ECM_PM1)
+  if (use_gpu && (method == ECM_PM1 || method == ECM_PP1))
     {
       if (same_file_path (savefilename, resumefilename) ||
           same_file_path (savefilename, infilename) ||
@@ -1172,7 +1169,7 @@ main (int argc, char *argv[])
           same_file_path (chkfilename, resumefilename) ||
           same_file_path (chkfilename, savefilename))
         {
-          fprintf (stderr, "GPU P-1 input, resume, save and checkpoint paths must be distinct.\n");
+          fprintf (stderr, "GPU P-1/P+1 input, resume, save and checkpoint paths must be distinct.\n");
           exit (EXIT_FAILURE);
         }
       if (count != 1 || gpucurves || specific_A || specific_sigma || specific_y0 ||
@@ -1183,14 +1180,14 @@ main (int argc, char *argv[])
 #endif
           )
         {
-          fprintf (stderr, "GPU P-1 supports one run per input; use -gpubatch instead of -gpucurves. "
+          fprintf (stderr, "GPU P-1/P+1 supports one run per input; use -gpubatch instead of -gpucurves. "
                    "Curve options, batch-exponent files, -treefile and -go with -resume are not supported.\n");
           exit (EXIT_FAILURE);
         }
       if (!isfinite (B1) || !isfinite (B1done) || B1 < 1 || B1 > 3124253146.0 ||
           B1done > B1 || floor (B1) != B1 || floor (B1done) != B1done)
         {
-          fprintf (stderr, "GPU P-1 requires integer bounds with 0 <= B1done <= B1 <= 3124253146 and B1 >= 1.\n");
+          fprintf (stderr, "GPU P-1/P+1 requires integer bounds with 0 <= B1done <= B1 <= 3124253146 and B1 >= 1.\n");
           exit (EXIT_FAILURE);
         }
     }
@@ -1216,7 +1213,7 @@ main (int argc, char *argv[])
   if (resumefilename != NULL)
     {
       /* -resume should not be used with -gpu */
-      if (use_gpu && method != ECM_PM1)
+      if (use_gpu && method == ECM_ECM)
         {
           fprintf (stderr, "Error, -resume not allowed with -gpu\n");
           exit (EXIT_FAILURE);
@@ -1300,7 +1297,7 @@ main (int argc, char *argv[])
   mpz_init (f); /* factor found */
   mpz_init (x); /* stage 1 residue */
   mpz_init (y); /* stage 1 for ECM_W or ECM_H */
-  mpz_init (orig_x0); /* starting point, for save file */
+  mpq_init (orig_x0); /* original starting point, for logging and saves */
   mpz_init (orig_y0); /* starting point, for save file */
 
   /* Install signal handlers */
@@ -1309,7 +1306,7 @@ main (int argc, char *argv[])
      we could save by exiting cleanly, but the waiting for the code to check
      for signals may delay program end unacceptably */
 
-  if (savefilename != NULL || cpu_threads > 1 || (use_gpu && method == ECM_PM1))
+  if (savefilename != NULL || cpu_threads > 1 || (use_gpu && method != ECM_ECM))
     {
       signal (SIGINT, &signal_handler);
       signal (SIGTERM, &signal_handler);
@@ -1326,7 +1323,7 @@ main (int argc, char *argv[])
     infile = stdin;
 
 #ifdef WITH_GPU
-  if (use_gpu && method == ECM_PM1)
+  if (use_gpu && (method == ECM_PM1 || method == ECM_PP1))
     {
       params->use_ntt = use_ntt;
       returncode = pm1_gpu_run (infile, resumefile, params, B1, B1done,
@@ -1476,7 +1473,7 @@ main (int argc, char *argv[])
 	    {
 		if (param != ECM_PARAM_TWISTED_HESSIAN)
 		    {
-			returncode = mod_from_mpq (A, rat_A, &n, verbose, method, B1, B2);
+			returncode = mod_from_mpq (A, rat_A, &n, verbose, method, B1, B2, NULL);
 		    }
 		else
 		    {
@@ -1498,13 +1495,13 @@ main (int argc, char *argv[])
 		  exit (EXIT_FAILURE);
                 }
 
-	      returncode = mod_from_mpq (x, rat_x0, &n, verbose, method, B1, B2);
+	      returncode = mod_from_mpq (x, rat_x0, &n, verbose, method, B1, B2, rat_x0);
 	      if (returncode != ECM_NO_FACTOR_FOUND)
                   goto free_all1;
 
 	      if (specific_y0)
 		{
-		  returncode = mod_from_mpq (y, rat_y0, &n, verbose, method, B1, B2);
+		  returncode = mod_from_mpq (y, rat_y0, &n, verbose, method, B1, B2, NULL);
 		  if (returncode != ECM_NO_FACTOR_FOUND)
                   goto free_all1;
 		}
@@ -1514,9 +1511,15 @@ main (int argc, char *argv[])
                   compute a suitable value from sigma or A if x is zero. */
             mpz_set_ui (x, 0);
          
-          if (ECM_IS_DEFAULT_B1_DONE (B1done)) /* first time */
+          /* Retain an explicitly supplied P-/+1 value even when the user
+             selects a B1 interval rather than loading a resume record. */
+          if (ECM_IS_DEFAULT_B1_DONE (B1done) ||
+              (method != ECM_ECM && specific_x0))
 	    {
-	      mpz_set (orig_x0, x);
+	      if (method != ECM_ECM && specific_x0)
+                mpq_set (orig_x0, rat_x0);
+              else
+                mpq_set_z (orig_x0, x);
 	      if (specific_y0)
 		mpz_set (orig_y0, y);  
 	    }
@@ -1765,8 +1768,21 @@ main (int argc, char *argv[])
       mpz_set_ui (params->gpu_factor_sigmas, 0);
       mpz_set_ui (params->gpu_factor_stages, 0);
       if (result == ECM_NO_FACTOR_FOUND)
-        /* if torsion was used, some factor may have been found... */
-        result = ecm_factor (f, n.n, B1, params);
+        {
+          /* Choose the same random base the library would choose, before
+             params->x becomes a stage-1 residue. Keep it for logging/saves. */
+          if (method != ECM_ECM && mpz_odd_p (n.n) && mpz_sgn (params->x) == 0 &&
+              (method == ECM_PM1 || ECM_IS_DEFAULT_B1_DONE (params->B1done)))
+            {
+              if (method == ECM_PM1) __ECM(pm1_random_seed) (params->x, n.n, params->rng);
+              else __ECM(pp1_random_seed) (params->x, n.n, params->rng);
+              mpq_set_z (orig_x0, params->x);
+            }
+          /* If torsion was used, some factor may already have been found. */
+          __ecm_original_x0 = method != ECM_ECM ? orig_x0 : NULL;
+          result = ecm_factor (f, n.n, B1, params);
+          __ecm_original_x0 = NULL;
+        }
 
       if (result == ECM_ERROR || result == ECM_USER_ERROR)
         {
@@ -1820,7 +1836,7 @@ main (int argc, char *argv[])
               returncode = process_newfactor (tmp_factor, factor_step, &n, method,
                                  returncode, params->gpu, &cnt, &resume_wasPrp,
                                  resume_lastfac, resumefile, verbose, deep,
-                                 params, curve_sigma, B1);
+                                 params, curve_sigma, orig_x0, B1);
             } while (params->gpu && mpz_cmp_ui (f, 0) != 0 
                                  && returncode != ECM_INPUT_NUMBER_FOUND);
           mpz_clear (tmp_factor);
@@ -1889,7 +1905,7 @@ main (int argc, char *argv[])
     }
 
   mpz_clear (orig_y0);
-  mpz_clear (orig_x0);
+  mpq_clear (orig_x0);
   mpz_clear (y);
   mpz_clear (x);
   mpz_clear (f);

@@ -620,6 +620,17 @@ The format used is the following:
     - TIME (date and time of first step)
   PARAM, SIGMA and X0 would be optional, and would be mainly be used in case of
   a factor is found, to be able to reproduce the factorization.
+  For P-1/P+1, a supplied rational starting value is retained as a fraction:
+  -x0 2/7 produces X0=2/7 in saves and checkpoints, x0=2/7 in the console,
+  and X0: 2/7 in BrentFactors.log. The numerator and denominator are kept
+  without reducing the fraction (for example, 4/14 stays 4/14). Modular
+  arithmetic still uses the corresponding integer modulo each input N.
+  Integer starting values, including random seeds, are saved/logged in hex.
+  This works with serial CPU, -threads, and GPU P-1/P+1, including resuming
+  a save with a different execution mode. Old integer X0 records remain
+  readable; older executables do not support the new fractional X0 format.
+  Missing X0 and legacy X0=0x0 values remain unknown; the original fraction
+  cannot in general be recovered from an older saved modular integer.
   For ECM, one of the SIGMA or A values must be present, so that the
   computation can be continued on the correct curve.
   The B1 and X values satisfy the condition that X is a lcm(1,2,...,B1)-th

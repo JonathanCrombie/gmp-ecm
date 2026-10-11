@@ -59,6 +59,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #define VERBOSE __ECM(verbose)
 static ECM_THREAD_LOCAL int VERBOSE = OUTPUT_NORMAL;
 ECM_THREAD_LOCAL int __ecm_cpu_worker = 0;
+ECM_THREAD_LOCAL mpq_srcptr __ecm_original_x0 = NULL;
 
 void 
 mpz_add_si (mpz_t r, mpz_t s, long i)
@@ -319,6 +320,16 @@ writechkfile (char *chkfilename, int method, double p, mpmod_t modulus,
 	  }
       mpres_get_z (t, A, modulus);
       gmp_fprintf (chkfile, " A=0x%Zx;", t);
+    }
+  if (method != ECM_ECM && __ecm_original_x0)
+    {
+      mpq_srcptr q = __ecm_original_x0;
+      if (mpz_cmp_ui (mpq_denref (q), 1) != 0)
+        gmp_fprintf (chkfile, " X0=%Zd/%Zd;", mpq_numref (q), mpq_denref (q));
+      else if (mpq_sgn (q) != 0)
+        gmp_fprintf (chkfile, " X0=%#Zx;", mpq_numref (q));
+      else
+        fprintf (chkfile, " X0=0x0;");
     }
   fprintf (chkfile, "\n");
   mpz_clear (t);

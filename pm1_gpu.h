@@ -1,4 +1,5 @@
-/* Command-line batching; kept separate from the single-number library API. */
+/* P-1/P+1 command-line batching; separate from the single-number library API.
+   params->method selects the method. The historic entry-point name is kept. */
 #ifndef PM1_GPU_H
 #define PM1_GPU_H
 #include "ecm-ecm.h"

@@ -154,7 +154,7 @@ freadstrn (FILE *fd, char *s, char delim, unsigned int len)
 */
 
 static void
-pm1_checkpoint_checksum (mpz_t checksum, const pm1_gpu_state *gpu)
+pm1_checkpoint_checksum (mpz_t checksum, const pm1_gpu_state *gpu, int method)
 {
   uint64_t target = (uint64_t) gpu->target;
   unsigned long fields[5];
@@ -169,17 +169,23 @@ pm1_checkpoint_checksum (mpz_t checksum, const pm1_gpu_state *gpu)
       mpz_mul_ui (checksum, checksum, 65599);
       mpz_add_ui (checksum, checksum, fields[i]);
     }
+  /* Keep existing P-1 checksums unchanged. P+1 binds the second Lucas value. */
+  if (method == ECM_PP1)
+    {
+      mpz_mul_ui (checksum, checksum, 65599);
+      mpz_add_ui (checksum, checksum, mpz_fdiv_ui (gpu->next, CHKSUMMOD));
+    }
 }
 
 int 
 read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n, 
 		      mpz_t sigma, mpz_t A,
-		      mpz_t x0, mpz_t y0, int *Etype, int *param, 
+		      mpq_t x0, mpz_t y0, int *Etype, int *param,
 		      double *b1, char *program, char *who, char *rtime, 
 		      char *comment, FILE *fd, pm1_gpu_state *gpu)
 {
   int a, have_method, have_x, have_y, have_z, have_n, have_sigma, have_a, 
-      have_b1, have_checksum, have_qx;
+      have_b1, have_checksum, have_qx, have_x0;
   unsigned int saved_checksum;
   char tag[16];
   char label[sizeof (n->brent_label)];
@@ -205,7 +211,7 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
         break;
       
       have_method = have_x = have_y = have_z = have_n = have_sigma = have_a = 
-                    have_b1 = have_qx = have_checksum = 0;
+                    have_b1 = have_qx = have_checksum = have_x0 = 0;
       have_gpu = 0;
       if (gpu) { gpu->present = 0; gpu->bits = 0; gpu->target = 0; }
 
@@ -218,6 +224,10 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
       /* Set optional fields to zero */
       mpz_set_ui (sigma, 0);
       mpz_set_ui (A, 0);
+      /* Missing optional starting coordinates must not inherit the previous
+         record's values, especially when reporting an original P-/+1 base. */
+      mpq_set_ui (x0, 0, 1);
+      mpz_set_ui (y0, 0);
       if (program != NULL)
         program[0] = 0;
       if (who != NULL)
@@ -279,7 +289,17 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
             }
           else if (strcmp (tag, "X0") == 0)
             {
-              mpz_inp_str (x0, fd, 0);
+              /* Keep the supplied numerator/denominator, without reducing
+                 modulo N or canonicalizing away the original fraction. */
+              if (have_x0 || !mpq_inp_str (x0, fd, 0) ||
+                  mpz_sgn (mpq_denref (x0)) == 0 || !facceptstr (fd, ";"))
+                {
+                  fprintf (stderr, "Invalid or duplicate X0 in resume record.\n");
+                  if (have_z) mpz_clear (z);
+                  return -1;
+                }
+              have_x0 = 1;
+              ungetc (';', fd); /* The common field parser consumes this. */
             }
           else if (strcmp (tag, "Y0") == 0)
             {
@@ -345,7 +365,7 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
             {
               if (!gpu)
                 {
-                  fprintf (stderr, "Partial GPU P-1 residue requires -pm1 -gpu -resume.\n");
+                  fprintf (stderr, "Partial GPU P-1/P+1 residue requires the matching -pm1/-pp1 -gpu -resume.\n");
                   return -1;
                 }
               if (strcmp (tag, "GPU_B1") == 0 && !(have_gpu & 1))
@@ -370,6 +390,11 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
                 {
                   if (!mpz_inp_str (gpu->base, fd, 0)) goto error;
                   have_gpu |= 4;
+                }
+              else if (strcmp (tag, "GPU_NEXT") == 0 && !(have_gpu & 8))
+                {
+                  if (!mpz_inp_str (gpu->next, fd, 0)) goto error;
+                  have_gpu |= 8;
                 }
               else goto error;
             }
@@ -404,13 +429,15 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
       /* Finished reading tags */
       if (have_gpu)
         {
-          if (have_gpu != 7 || !have_checksum || !have_method || !have_x ||
-              have_z || have_y || have_a || have_sigma || *method != ECM_PM1 ||
+          if (!have_method || (*method != ECM_PM1 && *method != ECM_PP1) ||
+              have_gpu != (*method == ECM_PP1 ? 15 : 7) || !have_checksum || !have_x ||
+              have_z || have_y || have_a || have_sigma ||
               !have_n || !have_b1 || !isfinite (*b1) || *b1 < 0 ||
               *b1 > gpu->target || mpz_cmp_ui (n->n, 1) <= 0 ||
               !mpz_odd_p (n->n) || mpz_sgn (gpu->base) < 0 ||
               mpz_cmp (gpu->base, n->n) >= 0 || mpz_sgn (x) < 0 ||
-              mpz_cmp (x, n->n) >= 0)
+              mpz_cmp (x, n->n) >= 0 ||
+              (*method == ECM_PP1 && (mpz_sgn (gpu->next) < 0 || mpz_cmp (gpu->next, n->n) >= 0)))
             goto error;
           gpu->present = 1;
         }
@@ -486,7 +513,7 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
           if (have_z)
             mpz_mul_ui (checksum, checksum, mpz_fdiv_ui (z, CHKSUMMOD));
           mpz_mul_ui (checksum, checksum, (*param+1)%CHKSUMMOD);
-          if (have_gpu) pm1_checkpoint_checksum (checksum, gpu);
+          if (have_gpu) pm1_checkpoint_checksum (checksum, gpu, *method);
           if (mpz_fdiv_ui (checksum, CHKSUMMOD) != saved_checksum)
             {
               fprintf (stderr, "Resume file line has bad checksum %u, expected %u\n", 
@@ -520,7 +547,7 @@ error:
       if (gpu)
         {
           if (have_z) mpz_clear (z);
-          fprintf (stderr, "Invalid GPU P-1 resume record.\n");
+          fprintf (stderr, "Invalid GPU P-1/P+1 resume record.\n");
           return -1;
         }
       /* This can occur when reading Prime95 resume files,
@@ -540,7 +567,7 @@ error:
 static void  
 write_resumefile_line (FILE *file, int method, double B1, const mpz_t sigma,
                        int sigma_is_A, int Etype, int param, const mpz_t x, const mpz_t y,
-		       const mpcandi_t *n, const mpz_t x0, const mpz_t y0, const char *comment,
+		       const mpcandi_t *n, const mpq_t x0, const mpz_t y0, const char *comment,
                        const pm1_gpu_state *gpu)
 {
   mpz_t checksum;
@@ -587,7 +614,8 @@ write_resumefile_line (FILE *file, int method, double B1, const mpz_t sigma,
     {
       gmp_fprintf (file, "; GPU_B1=%.0f; GPU_BITS=%" PRIu64 "; GPU_BASE=0x%Zx",
                    gpu->target, gpu->bits, gpu->base);
-      pm1_checkpoint_checksum (checksum, gpu);
+      if (method == ECM_PP1) gmp_fprintf (file, "; GPU_NEXT=0x%Zx", gpu->next);
+      pm1_checkpoint_checksum (checksum, gpu, method);
     }
   fprintf (file, "; CHECKSUM=%u; PROGRAM=GMP-ECM %s;",
            (unsigned int) mpz_fdiv_ui (checksum, CHKSUMMOD), VERSION);
@@ -599,7 +627,12 @@ write_resumefile_line (FILE *file, int method, double B1, const mpz_t sigma,
   
   if (x0 != NULL)
     {
-      gmp_fprintf (file, " X0=0x%Zx;", x0);
+      if (mpz_cmp_ui (mpq_denref (x0), 1) != 0)
+        gmp_fprintf (file, " X0=%Zd/%Zd;", mpq_numref (x0), mpq_denref (x0));
+      else if (mpq_sgn (x0) != 0)
+        gmp_fprintf (file, " X0=%#Zx;", mpq_numref (x0));
+      else
+        fprintf (file, " X0=0x0;");
     }
   if (y0 != NULL)
     {
@@ -676,7 +709,7 @@ write_resumefile_line (FILE *file, int method, double B1, const mpz_t sigma,
 int  
 write_resumefile (char *fn, int method, ecm_params params,
 		  mpcandi_t *n,
-                  const mpz_t orig_n, const mpz_t orig_x0, const mpz_t orig_y0,
+                  const mpz_t orig_n, const mpq_t orig_x0, const mpz_t orig_y0,
 		  const char *comment, const pm1_gpu_state *gpu)
 {
   FILE *file;

@@ -103,10 +103,66 @@ with tempfile.TemporaryDirectory(prefix='ECM Brent logging ') as directory:
     check('10403;' in entries[0] and 'Group Order:' not in entries[0], entries)
     for method in ('-pm1', '-pp1'):
         output, entries = run([method, '-x0', '3', '100'])
-        sigma_text = 'Sigma: Not Applicable' if method == '-pm1' else 'Sigma: unavailable'
-        check(all('Group Order:' not in e and sigma_text in e for e in entries), entries)
+        check(all('Group Order:' not in e and 'X0: 0x3;' in e and 'Sigma:' not in e
+                  for e in entries), entries)
         bound = re.search(r'Using B1=100, B2=(?:\d+-)?(\d+)', output)[1]
         check(all(f'B2={bound}' in e for e in entries), entries)
+
+    # Original P-/+1 bases survive preloads, stage-1 overwrites and resumes.
+    modes = [[], ['-threads', '4']] + ([['-gpu', '-gpubatch', '2']] if args.gpu else [])
+    prime = 2**127 - 1
+    for method in ('-pm1', '-pp1'):
+        stage1 = work / (method + '-bases.save')
+        candidates = '\n'.join(f'2 {12700+i}-L {p*prime}' for i, p in enumerate((101, 103, 107)))
+        run([method, '-x0', '3', '-save', str(stage1), '2', '0'], candidates, False)
+        lines = stage1.read_text().splitlines()
+        check(len(lines) == 3, lines)
+        lines[1] = re.sub(r'X0=[^;]+;', '', lines[1])
+        lines[2] = re.sub(r'X0=[^;]+;', 'X0=0x0;', lines[2])
+        stage1.write_text('\n'.join(lines) + '\n')
+        for index, mode in enumerate(modes):
+            _, entries = run([method, *mode, '-x0', '0x36238f4d', '100', '0'])
+            check(all('X0: 0x36238f4d;' in e and 'Sigma:' not in e for e in entries), entries)
+            _, entries = run([method, *mode, '-x0', '3', '-go', '7', '100', '0'])
+            check(all('X0: 0x3;' in e for e in entries), 'Logged a preloaded residue: ' + str(entries))
+            _, entries = run([method, *mode, '-resume', str(stage1), '100', '0'], '')
+            check(len(entries) == 3 and 'X0: 0x3;' in entries[0] and
+                  all('X0: unavailable;' in e for e in entries[1:]), entries)
+            _, entries = run([method, *mode, '-x0', '2/7', '100', '0'], f'2 12-M {7*prime}')
+            check(all('X0: 2/7;' in e for e in entries), 'Original fraction on denominator factor: ' + str(entries))
+            _, entries = run([method, *mode, '-x0', '3', '100', '0'], '3 5+M 122')
+            check(all('X0: 0x3;' in e for e in entries), entries)
+            _, entries = run([method, *mode, '100', '0'], '3 5+M 122')
+            check(all('X0: unavailable;' in e for e in entries), 'No base chosen for even input: ' + str(entries))
+            # Check random-base capture independently using the B1=2 formula.
+            # A zero explicit CPU base follows the library's random-seed path.
+            seeds = [[], ['-x0', '0']] if '-gpu' not in mode else [[]]
+            for seed_index, seed_option in enumerate(seeds):
+                saved = work / f'{method}-{index}-{seed_index}-random.save'
+                output, _ = run([method, *mode, *seed_option, '-save', str(saved), '2', '0'],
+                                f'2 127-M {prime}', False)
+                row = dict(re.findall(r'(\w+)=([^;]*);', saved.read_text()))
+                base = int(row['X0'], 0)
+                check(base > 0, ('Lost automatic starting base', row))
+                expected = (base*base - (2 if method == '-pp1' else 0)) % prime
+                check(int(row['X'], 0) == expected, ('Wrong original base', row))
+            if '-gpu' not in mode:
+                output, entries = run([method, *mode, '100', '0'])
+                base = int(re.search(r'\bx0=(\d+)', output)[1])
+                check(all(f'X0: {hex(base)};' in e for e in entries), output)
+
+    # Stage-2 logs must retain the starting base from completed GPU/CPU saves.
+    for method, base, factor, b1, b2 in (('-pm1', 2, 1000033, 100, 10000),
+                                         ('-pp1', 4, 1000039, 23, 1087)):
+        cofactor = 1000003 if method == '-pm1' else prime
+        for index, mode in enumerate(modes):
+            saved = work / f'{method}-{index}-stage2.save'
+            run([method, *mode, '-x0', str(base), '-save', str(saved), str(b1), '0'],
+                f'2 12700-L {factor*cofactor}', False)
+            for resume_mode in modes:
+                output, entries = run([method, *resume_mode, '-resume', str(saved), str(b1), str(b2)], '')
+                check(f'Factor found in step 2: {factor}' in output, output)
+                check(all(f'X0: {hex(base)};' in e for e in entries), entries)
     _, entries = run(['-sigma', '0:6', '100'], '3 5+M 122')
     check(entries == ['3 5+M 2; Sigma: unavailable; B1=100, B2=auto'], entries)
     _, entries = run(['-sigma', '0:6', '100'], source + '\n3 5+M 122')

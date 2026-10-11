@@ -86,6 +86,9 @@ extern size_t mpn_mul_lo_threshold[];
 #define ECM_STDERR __ecm_stderr
 extern ECM_THREAD_LOCAL FILE *ECM_STDOUT, *ECM_STDERR;
 extern ECM_THREAD_LOCAL int __ecm_cpu_worker;
+/* Optional CLI-owned starting seed, valid only during its ecm_factor call.
+   Used for display/checkpoints; arithmetic always uses modular integers. */
+extern ECM_THREAD_LOCAL mpq_srcptr __ecm_original_x0;
 
 /* #define TIMING_CRT */
 

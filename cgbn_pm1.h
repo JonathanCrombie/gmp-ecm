@@ -1,4 +1,4 @@
-/* Batched P-1 stage 1.  GPL-3.0-or-later, like cgbn_stage1.cu. */
+/* Batched P-1 and P+1 stage 1. GPL-3.0-or-later, like cgbn_stage1.cu. */
 #ifndef CGBN_PM1_H
 #define CGBN_PM1_H
 #include <stdint.h>
@@ -16,6 +16,15 @@ typedef struct {
   void *arg;
 } cgbn_pm1_callbacks;
 int cgbn_pm1_stage1_run(mpz_ptr *residues, mpz_srcptr *bases, mpz_srcptr *moduli,
+                       uint32_t count, mpz_srcptr exponent, uint64_t *bits_done,
+                       int device, float *milliseconds, int verbose,
+                       const cgbn_pm1_callbacks *callbacks);
+/* Lucas ladder: residues = V_k(base), next = V_(k+1)(base), where k is
+   the consumed MSB prefix. Start at (2, base), bits_done=0. Both arrays
+   are ordinary reduced residues and are published together at checkpoints.
+   The callbacks and return contract are the same as for P-1 below. */
+int cgbn_pp1_stage1_run(mpz_ptr *residues, mpz_ptr *next,
+                       mpz_srcptr *bases, mpz_srcptr *moduli,
                        uint32_t count, mpz_srcptr exponent, uint64_t *bits_done,
                        int device, float *milliseconds, int verbose,
                        const cgbn_pm1_callbacks *callbacks);
