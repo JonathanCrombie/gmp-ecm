@@ -259,6 +259,8 @@ append_brent_factor (const mpcandi_t *candidate, const mpz_t factor, int prime, 
   char *bounds = NULL, *curve = NULL, *record = NULL, *output = NULL;
   char *order = NULL, *factored = NULL;
   const char *group_field = "";
+  const char *method_name = method == ECM_PM1 ? "P-1" :
+                            method == ECM_PP1 ? "P+1" : "ECM";
   char *group = NULL;
   int have_sigma = method == ECM_ECM && param >= 0 && param <= 3 &&
                    sigma && mpz_sgn (sigma) > 0;
@@ -302,8 +304,8 @@ append_brent_factor (const mpcandi_t *candidate, const mpz_t factor, int prime, 
         }
     }
   if (bounds && curve)
-    gmp_asprintf (&record, "%s %Zd%s%s%s%s", candidate->brent_label,
-                   factor, curve, bounds, group_field, newline);
+    gmp_asprintf (&record, "%s %Zd; METHOD=%s%s%s%s%s", candidate->brent_label,
+                   factor, method_name, curve, bounds, group_field, newline);
   if (record == NULL)
     fprintf (stderr, "Warning: cannot allocate BrentFactors.log record.\n");
   else if (write_record (record) && out)

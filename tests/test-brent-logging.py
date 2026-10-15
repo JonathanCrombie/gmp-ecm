@@ -56,6 +56,9 @@ with tempfile.TemporaryDirectory(prefix='ECM Brent logging ') as directory:
         check(after[:len(before)] == before, 'Existing records were overwritten')
         entries = after[len(before):]
         check(bool(entries) == expected, output)
+        method = 'P-1' if '-pm1' in options else 'P+1' if '-pp1' in options else 'ECM'
+        check(all(re.match(r'^.+? \d+; METHOD=' + re.escape(method) + r'; ', e)
+                  for e in entries), entries)
         check(re.findall(r'^Adding Log Entry --> "([^\r\n]*)"$', output, re.M) == entries,
               'Screen and file records differ: ' + output)
         if '-q' in options:
@@ -63,12 +66,12 @@ with tempfile.TemporaryDirectory(prefix='ECM Brent logging ') as directory:
         return output, entries
 
     _, entries = run(['-sigma', '0:6', '100', '0'])
-    check(entries == ['2 12700-L 101; Sigma: 0:6; B1=100, B2=0'], entries)
+    check(entries == ['2 12700-L 101; METHOD=ECM; Sigma: 0:6; B1=100, B2=0'], entries)
     # Supplied helper beside ECM, while the working directory is elsewhere.
     shutil.copy2(helper_source, helper)
 
     def verify_order(entry):
-        match = re.fullmatch(r'(.+?) (\d+); Sigma: ([0-3]):(\d+); B1=\d+, B2=\w+; '
+        match = re.fullmatch(r'(.+?) (\d+); METHOD=ECM; Sigma: ([0-3]):(\d+); B1=\d+, B2=\w+; '
                              r'Group Order: (\d+) = ([0-9 *^]+)', entry)
         check(match is not None, entry)
         label, factor, param, sigma, order, factored = match.groups()
@@ -164,16 +167,16 @@ with tempfile.TemporaryDirectory(prefix='ECM Brent logging ') as directory:
                 check(f'Factor found in step 2: {factor}' in output, output)
                 check(all(f'X0: {hex(base)};' in e for e in entries), entries)
     _, entries = run(['-sigma', '0:6', '100'], '3 5+M 122')
-    check(entries == ['3 5+M 2; Sigma: unavailable; B1=100, B2=auto'], entries)
+    check(entries == ['3 5+M 2; METHOD=ECM; Sigma: unavailable; B1=100, B2=auto'], entries)
     _, entries = run(['-sigma', '0:6', '100'], source + '\n3 5+M 122')
     check(len(entries) == 2 and entries[1] ==
-          '3 5+M 2; Sigma: unavailable; B1=100, B2=auto', entries)
+          '3 5+M 2; METHOD=ECM; Sigma: unavailable; B1=100, B2=auto', entries)
     verify_order(entries[0])
     large_bound = '123456789012345678901234567890'
     _, entries = run(['100', large_bound], '3 5+M 122')
     check(entries[0].endswith('B2=' + large_bound), entries)
     _, entries = run(['-A', '1/7', '1'], '2 12-M 273')
-    check(entries == ['2 12-M 7; Sigma: unavailable; B1=1, B2=auto'], entries)
+    check(entries == ['2 12-M 7; METHOD=ECM; Sigma: unavailable; B1=1, B2=auto'], entries)
     resume_n = 1000003 * (2**127 - 1)
     run(['-sigma', '3:18446744073709551615', '-save', 'stage1.save', '10', '0'],
         f'2 127000254+M {resume_n}', False)
@@ -238,7 +241,7 @@ with tempfile.TemporaryDirectory(prefix='ECM Brent logging ') as directory:
         results = list(pool.map(concurrent, range(24)))
     check(all(r.returncode == 14 for r in results), results)
     entries = log.read_text().splitlines()[before:]
-    check(entries == ['3 5+M 2; Sigma: unavailable; B1=100, B2=0'] * 24, entries)
+    check(entries == ['3 5+M 2; METHOD=ECM; Sigma: unavailable; B1=100, B2=0'] * 24, entries)
     # A failed log append does not change factoring success or claim a write.
     log.unlink()
     log.mkdir()

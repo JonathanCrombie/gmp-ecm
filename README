@@ -869,8 +869,11 @@ in the current working directory. This includes labels restored from the
 COMMENT=LABEL= field of a save file and preserves an optional L/M suffix.
 Each record has the following form:
 
-2 12700-L 101; Sigma: 0:6; B1=100, B2=0; Group Order: 120 = 2^3 * 3 * 5
+2 12700-L 101; METHOD=ECM; Sigma: 0:6; B1=100, B2=0; Group Order: 120 = 2^3 * 3 * 5
 
+METHOD records the selected algorithm (ECM, P-1, or P+1), using the same names
+as save files, immediately after the factor. A P+1 run records METHOD=P+1
+even when it finds a factor through the p-1 group.
 The selected parameterization, full sigma, and B1/B2 are recorded. GPU factors
 retain an originating curve's sigma after deduplication or splitting. If an
 initialization factor precedes curve or automatic-bound selection, the record
