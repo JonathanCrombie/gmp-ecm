@@ -33,6 +33,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 
 #include <stdint.h>
 #include "ecm.h"
+#include "ecm-color.h"
 
 /* Structure for candidate usage.  This is much more powerful than using a
    simple mpz_t to hold the candidate.  This structure also houses the 

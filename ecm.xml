@@ -215,6 +215,16 @@ for P-1, P+1 and for ECM on numbers of size at most 30 machine words.
 
 <refsect1 id='output'><title>OUTPUT</title>
 <variablelist remap='TP'>
+    <varlistentry>
+    <term><option>-color auto|always|never</option></term>
+    <listitem><para>Color factors bright green, warnings yellow, errors red,
+    and input/run headings cyan. The default, auto, detects each output
+    stream separately and leaves redirected streams plain. A nonempty NO_COLOR
+    disables auto. Always forces ANSI colors, including through redirection,
+    and overrides NO_COLOR; never disables colors. Quiet numeric stdout,
+    save/checkpoint files, and BrentFactors.log always remain plain text.
+    </para></listitem>
+    </varlistentry>
   <varlistentry>
   <term><option>-q</option></term>
   <listitem>

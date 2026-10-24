@@ -222,7 +222,7 @@ write_record (const char *record)
         }
       if (!CloseHandle (file) && !error) error = GetLastError ();
     }
-  if (error) fprintf (stderr, "Warning: cannot append to BrentFactors.log (Windows error %lu).\n",
+  if (error) ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Warning: cannot append to BrentFactors.log (Windows error %lu).\n",
                        (unsigned long) error);
 #else
   int error = 0;
@@ -245,7 +245,7 @@ write_record (const char *record)
         }
       if (close (file) != 0 && !error) error = errno;
     }
-  if (error) fprintf (stderr, "Warning: cannot append to BrentFactors.log: %s.\n", strerror (error));
+  if (error) ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Warning: cannot append to BrentFactors.log: %s.\n", strerror (error));
 #endif
   return error == 0;
 }
@@ -307,7 +307,7 @@ append_brent_factor (const mpcandi_t *candidate, const mpz_t factor, int prime, 
     gmp_asprintf (&record, "%s %Zd; METHOD=%s%s%s%s%s", candidate->brent_label,
                    factor, method_name, curve, bounds, group_field, newline);
   if (record == NULL)
-    fprintf (stderr, "Warning: cannot allocate BrentFactors.log record.\n");
+    ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Warning: cannot allocate BrentFactors.log record.\n");
   else if (write_record (record) && out)
     {
       fputs ("\nAdding Log Entry --> \"", out);

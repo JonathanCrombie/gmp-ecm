@@ -94,7 +94,9 @@ static void *worker(void *arg)
           mpq_set_z(j->x0, j->p->x);
         }
         __ecm_original_x0 = j->p->method != ECM_ECM ? j->x0 : NULL;
+        ecm_color_bind(j->output, j->errors);
         j->result = ecm_factor(j->factor, j->n, bound, j->p);
+        ecm_color_bind(NULL, NULL);
         __ecm_original_x0 = NULL;
       }
     /* The library selects an automatic parametrization by value. Persist
@@ -301,7 +303,7 @@ static int next_job(cpu_job **out, cpu_group **current, unsigned *issued,
   for (;;) {
     if (base->stop_asap && base->stop_asap()) { r = 0; break; }
     j = job_new(base, o->threads, *id + 1);
-    if (!j) { fprintf(stderr, "Cannot allocate CPU job or temporary output files.\n"); r = -1; break; }
+    if (!j) { ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Cannot allocate CPU job or temporary output files.\n"); r = -1; break; }
     if (resume) {
       char program[256], who[256], when[256];
       r = read_resumefile_line(&j->p->method, j->p->x, j->p->y, &n,
@@ -360,11 +362,11 @@ static int report_job(cpu_job *j, const cpu_job_options *o, int resumed,
   if (o->timestamp && verbose) { time_t t = time(NULL); printf("[%.24s]\n", ctime(&t)); }
   print_brent_source(n, verbose ? stdout : stderr);
   if (verbose) {
-    if (resumed) printf("Resuming %s residue\n", j->p->method == ECM_ECM ? "ECM" :
+    if (resumed) ecm_color_fprintf(stdout, ECM_COLOR_HEADING, "Resuming %s residue\n", j->p->method == ECM_ECM ? "ECM" :
                         j->p->method == ECM_PM1 ? "P-1" : "P+1");
-    if (!resumed && !o->count) printf("Run %u:\n", j->run);
-    if (!resumed && o->count > 1) printf("Run %u out of %u:\n", j->run, o->count);
-    gmp_printf("Input number is %Zd (%u digits)\n", j->n, nb_digits(j->n));
+    if (!resumed && !o->count) ecm_color_fprintf(stdout, ECM_COLOR_HEADING, "Run %u:\n", j->run);
+    if (!resumed && o->count > 1) ecm_color_fprintf(stdout, ECM_COLOR_HEADING, "Run %u out of %u:\n", j->run, o->count);
+    ecm_color_fprintf(stdout, ECM_COLOR_HEADING, "Input number is %Zd (%u digits)\n", j->n, nb_digits(j->n));
   }
   rewind(j->output);
   while ((size = fread(buffer, 1, sizeof(buffer), j->output)) != 0)
@@ -430,9 +432,9 @@ int cpu_jobs_run(FILE *input, FILE *resume, ecm_params base, const cpu_job_optio
     if (base->batch_last_B1_used != o->B1) compute_s(base->batch_s, (ecm_uint)o->B1, NULL);
     error = !write_s_in_file(o->save_s, base->batch_s, o->save_s_mmap, (uint64_t)o->B1);
   }
-  if (base->verbose) printf("CPU jobs: %u threads; output and saves in input order\n", o->threads);
+  if (base->verbose) ecm_color_fprintf(stdout, ECM_COLOR_HEADING, "CPU jobs: %u threads; output and saves in input order\n", o->threads);
   for (; !error && started < o->threads; ++started)
-    if (pthread_create(threads + started, NULL, worker, &pool)) { fprintf(stderr, "Cannot create CPU worker %u.\n", started + 1); error = 1; break; }
+    if (pthread_create(threads + started, NULL, worker, &pool)) { ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Cannot create CPU worker %u.\n", started + 1); error = 1; break; }
   while (!error || count) {
     while (!error && !eof && count < capacity && !(pool.stop && pool.stop())) {
       cpu_job *j;
@@ -463,7 +465,7 @@ int cpu_jobs_run(FILE *input, FILE *resume, ecm_params base, const cpu_job_optio
   pthread_cond_broadcast(&pool.work); pthread_mutex_unlock(&pool.mutex);
   for (i = 0; i < started; ++i) pthread_join(threads[i], NULL);
   if (pool.stop && pool.stop())
-    fprintf(stderr, "CPU jobs stopped after dispatching %llu jobs; buffered residues saved%s in input order. Unread inputs remain in the input file.\n",
+    ecm_color_fprintf (stderr, ECM_COLOR_WARNING, "CPU jobs stopped after dispatching %llu jobs; buffered residues saved%s in input order. Unread inputs remain in the input file.\n",
       (unsigned long long)id, o->savefile ? "" : " nowhere (no -save file)");
   group_release(current);
   pthread_cond_destroy(&pool.completed); pthread_cond_destroy(&pool.work);

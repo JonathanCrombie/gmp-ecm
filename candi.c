@@ -34,20 +34,20 @@ Candi_Validate (const char *FunctionStr, const mpcandi_t *n)
   int abrt = 0;
   if (!FunctionStr)
     {
-      fprintf (stderr, "ERROR, UNKNOWN FUNCTION, can NOT continue checks!\n");
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "ERROR, UNKNOWN FUNCTION, can NOT continue checks!\n");
       exit(-1);
     }
   if (!n)
     {
-      abrt = fprintf (stderr, "ERROR, %s() *n was NULL, can NOT continue checks!\n", FunctionStr);
+      abrt = ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "ERROR, %s() *n was NULL, can NOT continue checks!\n", FunctionStr);
       exit(-1);
     }
   if (n->magic != VALID_MAGIC)
-    abrt = fprintf (stderr, "ERROR, %s() VALID_MAGIC not valid\n", FunctionStr);
+    abrt = ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "ERROR, %s() VALID_MAGIC not valid\n", FunctionStr);
   if (n->cpExpr && n->nexprlen != strlen(n->cpExpr))
-    abrt = fprintf (stderr, "ERROR, %s() Invalid cpExpr length\n", FunctionStr);
+    abrt = ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "ERROR, %s() Invalid cpExpr length\n", FunctionStr);
   if (n->ndigits != nb_digits(n->n))
-	abrt = fprintf (stderr, "ERROR, %s() Invalid n->ndigits length\n", FunctionStr);
+	abrt = ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "ERROR, %s() Invalid n->ndigits length\n", FunctionStr);
   if (abrt)
     exit(-1);
 }
@@ -143,7 +143,7 @@ mpcandi_t_addfoundfactor (mpcandi_t *n, mpz_t f, int displaywarning)
          ui() function to call. When trial dividing, it is VERY frequent to 
          be divisible by 2^3, and we try to remove factors UNTIL */
       if (displaywarning)
-        gmp_fprintf (stderr, "ECM logic ERROR. Trying to remove a "
+        ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "ECM logic ERROR. Trying to remove a "
                      "non-factor %Zd\n", f);
 #if defined (CANDI_DEBUG)
       Candi_Validate("Post (no factor removed) mpcandi_t_addfoundfactor", n);

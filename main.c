@@ -132,6 +132,7 @@ usage (void)
     printf ("  -dickson n   use n-th Dickson's polynomial for Brent-Suyama's extension\n");
     printf ("  -c n         perform n runs for each input\n");
     printf ("  -threads x   run x independent CPU jobs (default 1); save in input order\n");
+    printf ("  -color mode  terminal colors: auto (default), always, or never\n");
     printf ("  -pm1         perform P-1 instead of ECM\n");
     printf ("  -pp1         perform P+1 instead of ECM\n");
     printf ("  -q           quiet mode\n");
@@ -378,12 +379,12 @@ mod_from_mpq (mpz_t r, mpq_t q, const mpcandi_t *candidate, int verbose, int met
 	if (verbose > 0)
           {
             if (verbose > 1)
-              printf ("Warning: factor found during initialization\n");
-            printf ("********** Factor found in step 1: ");
+              ecm_color_fprintf (stdout, ECM_COLOR_WARNING,
+                                 "Warning: factor found during initialization\n");
+            ecm_color_fprintf (stdout, ECM_COLOR_FACTOR,
+                               "********** Factor found in step 1: %Zd\n", r);
           }
-	mpz_out_str (stdout, 10, r);
-	if (verbose > 0)
-	    printf ("\n");
+        else mpz_out_str (stdout, 10, r);
 	if (mpz_cmp (r, N) == 0)
           print_brent_source (candidate, verbose > 0 ? stdout : stderr);
 	if (mpz_cmp (r, N) == 0)
@@ -538,11 +539,13 @@ main (int argc, char *argv[])
   unsigned int gpubatch = 0;
   unsigned int cpu_threads = 1;
 
+  ecm_color_init ("auto");
+
   /* check ecm is linked with a compatible library */
   if (mp_bits_per_limb != GMP_NUMB_BITS)
     {
-      fprintf (stderr, "Error, mp_bits_per_limb and GMP_NUMB_BITS differ\n");
-      fprintf (stderr, "Please check your LD_LIBRARY_PATH variable\n");
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, mp_bits_per_limb and GMP_NUMB_BITS differ\n");
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Please check your LD_LIBRARY_PATH variable\n");
       exit (1);
     }
 
@@ -564,15 +567,25 @@ main (int argc, char *argv[])
   /* first look for options */
   while ((argc > 1) && (argv[1][0] == '-'))
     {
-      if (strcmp (argv[1], "-threads") == 0)
+      if (strcmp (argv[1], "-color") == 0)
+        {
+          if (argc <= 2 || !ecm_color_init (argv[2]))
+            {
+              ecm_color_fprintf (stderr, ECM_COLOR_ERROR,
+                                 "-color requires auto, always, or never.\n");
+              exit (EXIT_FAILURE);
+            }
+          argv += 2; argc -= 2;
+        }
+      else if (strcmp (argv[1], "-threads") == 0)
         {
           char *end;
           unsigned long value;
-          if (argc <= 2) { fprintf(stderr, "-threads requires an integer from 1 to 1024.\n"); exit(EXIT_FAILURE); }
+          if (argc <= 2) { ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "-threads requires an integer from 1 to 1024.\n"); exit(EXIT_FAILURE); }
           errno = 0;
           value = strtoul(argv[2], &end, 10);
           if (errno || argv[2][0] < '0' || argv[2][0] > '9' || *end || !value || value > 1024)
-            { fprintf(stderr, "-threads requires an integer from 1 to 1024.\n"); exit(EXIT_FAILURE); }
+            { ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "-threads requires an integer from 1 to 1024.\n"); exit(EXIT_FAILURE); }
           cpu_threads = (unsigned int)value;
           argv += 2; argc -= 2;
         }
@@ -680,7 +693,7 @@ main (int argc, char *argv[])
       else if ((argc > 2) && (strcmp (argv[1], "-bsaves") == 0))
         {
           if (savefile_s != NULL) {
-              fprintf (stderr, "Multiple -bsaves or -bsavems options were given\n");
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Multiple -bsaves or -bsavems options were given\n");
               exit (EXIT_FAILURE);
           }
           savefile_s = argv[2];
@@ -691,7 +704,7 @@ main (int argc, char *argv[])
       else if ((argc > 2) && (strcmp (argv[1], "-bloads") == 0))
         {
           if (loadfile_s != NULL) {
-              fprintf (stderr, "Multiple -bloads or -bloadms options were given\n");
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Multiple -bloads or -bloadms options were given\n");
               exit (EXIT_FAILURE);
           }
           loadfile_s = argv[2];
@@ -703,7 +716,7 @@ main (int argc, char *argv[])
       else if ((argc > 2) && (strcmp (argv[1], "-bsavems") == 0))
         {
           if (savefile_s != NULL) {
-              fprintf (stderr, "Multiple -bsaves or -bsavems options were given\n");
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Multiple -bsaves or -bsavems options were given\n");
               exit (EXIT_FAILURE);
           }
           savefile_s = argv[2];
@@ -714,7 +727,7 @@ main (int argc, char *argv[])
       else if ((argc > 2) && (strcmp (argv[1], "-bloadms") == 0))
         {
           if (loadfile_s != NULL) {
-              fprintf (stderr, "Multiple -bloads or -bloadms options were given\n");
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Multiple -bloads or -bloadms options were given\n");
               exit (EXIT_FAILURE);
           }
           loadfile_s = argv[2];
@@ -738,7 +751,7 @@ main (int argc, char *argv[])
           if (mpq_set_str (rat_x0, argv[2], 0) ||
               mpz_sgn (mpq_denref (rat_x0)) == 0)
             {
-              fprintf (stderr, "Error, invalid starting point: %s\n", argv[2]);
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, invalid starting point: %s\n", argv[2]);
               exit (EXIT_FAILURE);
             }
           specific_x0 = 1;
@@ -749,7 +762,7 @@ main (int argc, char *argv[])
         {
           if (mpq_set_str (rat_y0, argv[2], 0))
             {
-              fprintf (stderr, "Error, invalid starting point: %s\n", argv[2]);
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, invalid starting point: %s\n", argv[2]);
               exit (EXIT_FAILURE);
             }
           specific_y0 = 1;
@@ -762,7 +775,7 @@ main (int argc, char *argv[])
           /* '-param 0' and '-param -otherargs' as it will always return 0 */
           if (argv[2][0] == '-') 
             {
-              fprintf (stderr, "Error, invalid -param value: %s\n", argv[2]);
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, invalid -param value: %s\n", argv[2]);
               exit (EXIT_FAILURE);
             }
           /* If param was already set (by -sigma i:x), we should check that */
@@ -771,7 +784,7 @@ main (int argc, char *argv[])
             {
               if (param != atoi (argv[2]))
                 {
-                  fprintf (stderr, "Error, conflict between -sigma and -param "
+                  ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, conflict between -sigma and -param "
                                    "arguments\n");
                   exit (EXIT_FAILURE);
                 }
@@ -795,7 +808,7 @@ main (int argc, char *argv[])
                 {
                   if (param != atoi (argv[2]))
                     {
-                      fprintf (stderr, "Error, conflict between -sigma and "
+                      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, conflict between -sigma and "
                                        "-param arguments\n");
                       exit (EXIT_FAILURE);
                     }
@@ -805,7 +818,7 @@ main (int argc, char *argv[])
 
               if (mpz_set_str (sigma, argv[2]+2, 0) || mpz_sgn (sigma) == 0) 
                 {
-                  fprintf (stderr, "Error, invalid sigma value: %s\n", 
+                  ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, invalid sigma value: %s\n",
                            argv[2]+2);
                   exit (EXIT_FAILURE);
                 }
@@ -816,7 +829,7 @@ main (int argc, char *argv[])
                 param = ECM_PARAM_SUYAMA; 
               if (mpz_set_str (sigma, argv[2], 0)) 
                 {
-                  fprintf (stderr, "Error, invalid sigma value: %s\n", argv[2]);
+                  ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, invalid sigma value: %s\n", argv[2]);
                   exit (EXIT_FAILURE);
                 }
             }
@@ -828,7 +841,7 @@ main (int argc, char *argv[])
         {
           if (mpq_set_str (rat_A, argv[2], 0))
 	    {
-	      fprintf (stderr, "Error, invalid A value: %s\n", argv[2]);
+	      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, invalid A value: %s\n", argv[2]);
               exit (EXIT_FAILURE);
 	    }
 	  specific_A = 1;
@@ -917,7 +930,7 @@ main (int argc, char *argv[])
 	  infile = fopen (infilename, "r");
 	  if (!infile)
 	    {
-	      fprintf (stderr, "Can't find input file %s\n", infilename);
+	      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Can't find input file %s\n", infilename);
 	      exit (EXIT_FAILURE);
 	    }
 	  argv += 2;
@@ -940,13 +953,13 @@ main (int argc, char *argv[])
 	{
 	  if (go.cpOrigExpr)
             {
-              fprintf (stderr, "Warning, for multiple -go options, only the last one is taken into account.\n");
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Warning, for multiple -go options, only the last one is taken into account.\n");
               free (go.cpOrigExpr);
             }
 	  go.cpOrigExpr = malloc (strlen (argv[2]) + 1);
           if (go.cpOrigExpr == NULL)
             {
-              fprintf (stderr, "Cannot allocate memory in main\n");
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Cannot allocate memory in main\n");
               exit (1);
             }
 	  strcpy (go.cpOrigExpr, argv[2]);
@@ -988,7 +1001,7 @@ main (int argc, char *argv[])
           value = strtoul (argv[2], &end, 10);
           if (errno || *end || argv[2][0] == '-' || value == 0 || value > 1048576)
             {
-              fprintf (stderr, "-gpubatch must be an integer from 1 to 1048576.\n");
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "-gpubatch must be an integer from 1 to 1048576.\n");
               exit (EXIT_FAILURE);
             }
           gpubatch = (unsigned int) value;
@@ -1004,27 +1017,27 @@ main (int argc, char *argv[])
 #endif
       else
 	{
-	  fprintf (stderr, "Unknown option: %s\n", argv[1]);
+	  ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Unknown option: %s\n", argv[1]);
 	  exit (EXIT_FAILURE);
 	}
     }
 
   if ((method == ECM_PM1 || method == ECM_PP1) && (S != ECM_DEFAULT_S && S != 1))
     {
-      fprintf (stderr, "Error, %s not supported for %s\n",
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, %s not supported for %s\n",
               S < 0 ? "-dickson" : "-power", method == ECM_PM1 ? "-pm1" : "-pp1" );
       exit (EXIT_FAILURE);
     }
 
   if (argc < 2)
     {
-      fprintf (stderr, "Invalid arguments. See %s --help.\n", argv0[0]);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Invalid arguments. See %s --help.\n", argv0[0]);
       exit (EXIT_FAILURE);
     }
 
   if (strcmp (ecm_version (), ECM_VERSION) != 0)
     {
-      fprintf (stderr, "Error, library version %s differs from header "
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, library version %s differs from header "
                "version %s with which this file was compiled\n",
                ecm_version (), ECM_VERSION);
       exit (EXIT_FAILURE);
@@ -1066,19 +1079,8 @@ main (int argc, char *argv[])
       out += sprintf (out, ", --enable-openmp");
 #endif
 
-      printf ("%s] [", out0);
-      switch (method)
-	{
-	case ECM_PM1:
-	  printf ("P-1");
-	  break;
-	case ECM_PP1:
-	  printf ("P+1");
-	  break;
-	default:
-	  printf ("ECM");
-	}
-      printf ("]\n");
+      ecm_color_fprintf (stdout, ECM_COLOR_HEADING, "%s] [%s]\n", out0,
+                         method == ECM_PM1 ? "P-1" : method == ECM_PP1 ? "P+1" : "ECM");
 #ifdef ECM_TUNE_CASE
       if (verbose >= 2)
         printf ("Tuned for %s\n", ECM_TUNE_CASE);
@@ -1100,7 +1102,7 @@ main (int argc, char *argv[])
   /* Set first stage bound B1 from argv[1] into mpz B2min and B2. */
   if (!read_bound (B2min, B2, argv[1], ECM_DEFAULT_B1_DONE))
     {
-      fprintf (stderr, "Failed to parse B1 bounds from '%s'\n", argv[1]);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Failed to parse B1 bounds from '%s'\n", argv[1]);
       exit (EXIT_FAILURE);
     }
 
@@ -1108,14 +1110,14 @@ main (int argc, char *argv[])
   B1 = mpz_get_d (B2);
   if (B1 < 0.0 || B1done < 0.0)
     {
-      fprintf (stderr, "Bound values must be positive\n");
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Bound values must be positive\n");
       exit (EXIT_FAILURE);
     }
 
   /* check B1 is not too large */
   if (B1 > MAX_B1)
     {
-      fprintf (stderr, "Too large stage 1 bound, limit is %1.0f\n", MAX_B1);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Too large stage 1 bound, limit is %1.0f\n", MAX_B1);
       exit (EXIT_FAILURE);
     }
 
@@ -1127,7 +1129,7 @@ main (int argc, char *argv[])
     {
       if (!read_bound (B2min, B2, argv[2], ECM_DEFAULT_B2))
         {
-          fprintf (stderr, "Error: expected positive integer(s) B2 or "
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error: expected positive integer(s) B2 or "
                    "B2min-B2\n");
           exit (EXIT_FAILURE);
         }
@@ -1158,7 +1160,7 @@ main (int argc, char *argv[])
 
   if (gpubatch && !(use_gpu && (method == ECM_PM1 || method == ECM_PP1)))
     {
-      fprintf (stderr, "-gpubatch requires -pm1 or -pp1 with -gpu.\n");
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "-gpubatch requires -pm1 or -pp1 with -gpu.\n");
       exit (EXIT_FAILURE);
     }
   if (use_gpu && (method == ECM_PM1 || method == ECM_PP1))
@@ -1169,7 +1171,7 @@ main (int argc, char *argv[])
           same_file_path (chkfilename, resumefilename) ||
           same_file_path (chkfilename, savefilename))
         {
-          fprintf (stderr, "GPU P-1/P+1 input, resume, save and checkpoint paths must be distinct.\n");
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "GPU P-1/P+1 input, resume, save and checkpoint paths must be distinct.\n");
           exit (EXIT_FAILURE);
         }
       if (count != 1 || gpucurves || specific_A || specific_sigma || specific_y0 ||
@@ -1180,14 +1182,14 @@ main (int argc, char *argv[])
 #endif
           )
         {
-          fprintf (stderr, "GPU P-1/P+1 supports one run per input; use -gpubatch instead of -gpucurves. "
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "GPU P-1/P+1 supports one run per input; use -gpubatch instead of -gpucurves. "
                    "Curve options, batch-exponent files, -treefile and -go with -resume are not supported.\n");
           exit (EXIT_FAILURE);
         }
       if (!isfinite (B1) || !isfinite (B1done) || B1 < 1 || B1 > 3124253146.0 ||
           B1done > B1 || floor (B1) != B1 || floor (B1done) != B1done)
         {
-          fprintf (stderr, "GPU P-1/P+1 requires integer bounds with 0 <= B1done <= B1 <= 3124253146 and B1 >= 1.\n");
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "GPU P-1/P+1 requires integer bounds with 0 <= B1done <= B1 <= 3124253146 and B1 >= 1.\n");
           exit (EXIT_FAILURE);
         }
     }
@@ -1195,18 +1197,18 @@ main (int argc, char *argv[])
   if (cpu_threads > 1)
     {
       if (use_gpu)
-        { fprintf(stderr, "-threads currently supports CPU jobs; omit -gpu/-cgbn.\n"); exit(EXIT_FAILURE); }
+        { ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "-threads currently supports CPU jobs; omit -gpu/-cgbn.\n"); exit(EXIT_FAILURE); }
       if (count != 1 && (resumefilename || specific_x0))
-        { fprintf(stderr, "-c other than 1 cannot be combined with -resume or -x0.\n"); exit(EXIT_FAILURE); }
+        { ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "-c other than 1 cannot be combined with -resume or -x0.\n"); exit(EXIT_FAILURE); }
       if (same_file_path(savefilename, resumefilename) || same_file_path(savefilename, infilename))
-        { fprintf(stderr, "Parallel input/resume and save paths must be distinct.\n"); exit(EXIT_FAILURE); }
+        { ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Parallel input/resume and save paths must be distinct.\n"); exit(EXIT_FAILURE); }
       if ((savefile_s || loadfile_s) && !IS_BATCH_MODE(param))
-        { fprintf(stderr, "Batch exponent files require -param 1, 2 or 3.\n"); exit(EXIT_FAILURE); }
+        { ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Batch exponent files require -param 1, 2 or 3.\n"); exit(EXIT_FAILURE); }
       if (param != ECM_PARAM_DEFAULT && (method != ECM_ECM ||
           (!IS_BATCH_MODE(param) && param != ECM_PARAM_SUYAMA &&
            param != ECM_PARAM_WEIERSTRASS && param != ECM_PARAM_HESSIAN &&
            param != ECM_PARAM_TWISTED_HESSIAN)))
-        { fprintf(stderr, "Invalid -param for parallel CPU jobs.\n"); exit(EXIT_FAILURE); }
+        { ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Invalid -param for parallel CPU jobs.\n"); exit(EXIT_FAILURE); }
     }
 
   /* Open resume file for reading, if resuming is requested */
@@ -1215,7 +1217,7 @@ main (int argc, char *argv[])
       /* -resume should not be used with -gpu */
       if (use_gpu && method == ECM_ECM)
         {
-          fprintf (stderr, "Error, -resume not allowed with -gpu\n");
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, -resume not allowed with -gpu\n");
           exit (EXIT_FAILURE);
         }
       if (strcmp (resumefilename, "-") == 0)
@@ -1225,7 +1227,7 @@ main (int argc, char *argv[])
       
       if (resumefile == NULL)
         {
-          fprintf (stderr, "Could not open file %s for reading\n", 
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Could not open file %s for reading\n",
                    resumefilename);
           exit (EXIT_FAILURE);
         }
@@ -1241,7 +1243,7 @@ main (int argc, char *argv[])
       /* Are we not appending and does this file already exist ? */
       if (!saveappend && access (savefilename, F_OK) == 0)
         {
-          fprintf (stderr, "Save file %s already exists, will not overwrite\n",
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Save file %s already exists, will not overwrite\n",
                   savefilename);
           exit (EXIT_FAILURE);
         }
@@ -1249,7 +1251,7 @@ main (int argc, char *argv[])
       savefile = fopen (savefilename, "a");
       if (savefile == NULL)
         {
-          fprintf (stderr, "Could not open file %s for writing\n", savefilename);
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Could not open file %s for writing\n", savefilename);
           exit (EXIT_FAILURE);
         }
       fclose (savefile);
@@ -1262,7 +1264,7 @@ main (int argc, char *argv[])
           /* Delete nonappend savefile to prevent empty files. */
           if (remove (savefilename) != 0)
             {
-              fprintf (stderr, "Save file %s could not be cleaned up\n", savefilename);
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Save file %s could not be cleaned up\n", savefilename);
               exit (EXIT_FAILURE);
             }
         }
@@ -1270,21 +1272,21 @@ main (int argc, char *argv[])
 
   if (specific_sigma && (specific_x0 || specific_A))
     {
-      fprintf (stderr, "Error, -sigma parameter is incompatible with "
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, -sigma parameter is incompatible with "
                        "-A and -x0 parameters.\n");
       exit (EXIT_FAILURE);
     }
 
   if (specific_y0 && (!specific_x0 || !specific_A))
     {
-      fprintf (stderr, "Error, -y0 must be used with -A and -x0 parameters.\n");
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, -y0 must be used with -A and -x0 parameters.\n");
       exit (EXIT_FAILURE);
     }
 
   if (resumefile && (specific_sigma || param != ECM_PARAM_DEFAULT || 
                      specific_A || specific_x0))
     {
-      printf ("Warning: -sigma, -param, -A and -x0 parameters are\n" 
+      ecm_color_fprintf (stdout, ECM_COLOR_WARNING, "Warning: -sigma, -param, -A and -x0 parameters are\n"
               "ignored when resuming from save files.\n");
       mpz_set_ui (sigma, 0);
       specific_sigma = 0;
@@ -1370,7 +1372,7 @@ main (int argc, char *argv[])
         {
           if (count != 1)
             {
-              fprintf (stderr, 
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC,
                        "Error, option -c and -resume are incompatible\n");
               exit (EXIT_FAILURE);
             }
@@ -1419,25 +1421,14 @@ main (int argc, char *argv[])
 
           if (verbose >= OUTPUT_NORMAL)
             {
-              printf ("Resuming ");
-              if (method == ECM_ECM)
-                printf ("ECM");
-              else if (method == ECM_PM1)
-                printf ("P-1");
-              else if (method == ECM_PP1)
-                printf ("P+1");
-              printf (" residue ");
-              if (program[0] || who[0] || rtime[0])
-                printf ("saved ");
-              if (who[0])
-                printf ("by %s ", who);
-              if (program[0])
-                printf ("with %s ", program);
-              if (rtime[0])
-                printf ("on %s ", rtime);
-              if (comment[0])
-                printf ("(%s)", comment);
-              printf ("\n");
+              ecm_color_fprintf (stdout, ECM_COLOR_HEADING,
+                  "Resuming %s residue %s%s%s%s%s%s%s%s%s%s%s%s%s\n",
+                  method == ECM_ECM ? "ECM" : method == ECM_PM1 ? "P-1" : "P+1",
+                  program[0] || who[0] || rtime[0] ? "saved " : "",
+                  who[0] ? "by " : "", who, who[0] ? " " : "",
+                  program[0] ? "with " : "", program, program[0] ? " " : "",
+                  rtime[0] ? "on " : "", rtime, rtime[0] ? " " : "",
+                  comment[0] ? "(" : "", comment, comment[0] ? ")" : "");
             }
         }
       else /* no-resume case */
@@ -1445,7 +1436,8 @@ main (int argc, char *argv[])
           if (cnt) /* nothing to read: reuse old number */   
             {
               if (verbose >= OUTPUT_NORMAL)
-                printf ("Run %u out of %u:\n", count - cnt + 1, count);
+                ecm_color_fprintf (stdout, ECM_COLOR_HEADING,
+                                   "Run %u out of %u:\n", count - cnt + 1, count);
             }
           else /* new number */
             {
@@ -1491,7 +1483,7 @@ main (int argc, char *argv[])
 	    {
 	      if (count != 1)
 		{
-		  fprintf (stderr, "Error, option -c is incompatible with -x0\n");
+		  ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, option -c is incompatible with -x0\n");
 		  exit (EXIT_FAILURE);
                 }
 
@@ -1533,10 +1525,10 @@ main (int argc, char *argv[])
             /* first time this candidate has been run 
                (if looping more than once) */
               if (n.cpExpr && n.nexprlen < MAX_NUMBER_PRINT_LEN)
-                  printf ("Input number is %s (%u digits)\n", n.cpExpr, 
+                  ecm_color_fprintf (stdout, ECM_COLOR_HEADING, "Input number is %s (%u digits)\n", n.cpExpr,
                                                                   n.ndigits);
               else if (n.ndigits < MAX_NUMBER_PRINT_LEN)
-                  gmp_printf ("Input number is %Zd (%u digits)\n", 
+                  ecm_color_fprintf (stdout, ECM_COLOR_HEADING, "Input number is %Zd (%u digits)\n",
                               n.n, n.ndigits);
               else
                 {
@@ -1547,16 +1539,16 @@ main (int argc, char *argv[])
                   mpz_ui_pow_ui (u, 5, n.ndigits - 10);
                   mpz_tdiv_q_2exp (t, n.n, n.ndigits - 10);
                   mpz_tdiv_q (t, t, u);
-                  gmp_printf ("Input number is %Zd...", t);
                   mpz_ui_pow_ui (u, 10, 10);
-                  mpz_tdiv_r (t, n.n, u);
-                  gmp_printf ("%Zd (%u digits)\n", t, n.ndigits);
+                  mpz_tdiv_r (u, n.n, u);
+                  ecm_color_fprintf (stdout, ECM_COLOR_HEADING,
+                                     "Input number is %Zd...%Zd (%u digits)\n", t, u, n.ndigits);
                   mpz_clear (u);
                   mpz_clear (t);
                 }
               
               if (n.isPrp)
-                  printf ("****** Warning: input is probably prime ******\n");
+                  ecm_color_fprintf (stdout, ECM_COLOR_WARNING, "****** Warning: input is probably prime ******\n");
             }
           fflush (stdout);
         }
@@ -1564,7 +1556,7 @@ main (int argc, char *argv[])
          however, we will print to stderr to keep stdout "clean"
          for verbose=0 like behavior */
       else if (cnt == count && n.isPrp)
-          gmp_fprintf (stderr, "Input number is %Zd (%u digits)\n"
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Input number is %Zd (%u digits)\n"
                            "****** Warning: input is probably prime ******\n", 
                            n.n, n.ndigits);
 
@@ -1572,7 +1564,7 @@ main (int argc, char *argv[])
 
       if (param != ECM_PARAM_DEFAULT && method != ECM_ECM)
         {
-          fprintf (stderr, "Error, the -param option is only valid for ECM\n");
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, the -param option is only valid for ECM\n");
           exit (EXIT_FAILURE);
         }
       else if (param != ECM_PARAM_DEFAULT && !IS_BATCH_MODE (param) 
@@ -1580,7 +1572,7 @@ main (int argc, char *argv[])
                && param != ECM_PARAM_HESSIAN
 	       && param != ECM_PARAM_TWISTED_HESSIAN)
         {
-          fprintf (stderr, "Error, invalid -param value: %d\n", param);
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, invalid -param value: %d\n", param);
           exit (EXIT_FAILURE);
         }
       /* params->param might be set if we resume from a file */
@@ -1593,7 +1585,7 @@ main (int argc, char *argv[])
         {
           if (!IS_BATCH_MODE(param))
             {
-              fprintf (stderr, "Error, -bsaves makes sense in batch mode only "
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, -bsaves makes sense in batch mode only "
                        "(-param in {%d,%d,%d})\n", ECM_PARAM_BATCH_SQUARE,
                        ECM_PARAM_BATCH_2, ECM_PARAM_BATCH_32BITS_D);
               exit (EXIT_FAILURE);
@@ -1610,7 +1602,7 @@ main (int argc, char *argv[])
           int st = cputime ();
           if (!IS_BATCH_MODE(param))
             {
-              fprintf (stderr, "Error, -bloads makes sense in batch mode only "
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, -bloads makes sense in batch mode only "
                        "(-param in {%d,%d,%d})\n", ECM_PARAM_BATCH_SQUARE,
                        ECM_PARAM_BATCH_2, ECM_PARAM_BATCH_32BITS_D);
               exit (EXIT_FAILURE);
@@ -1618,7 +1610,7 @@ main (int argc, char *argv[])
           params->batch_last_B1_used = B1;
           if (read_s_from_file (params->batch_s, loadfile_s, load_s_mmap, B1))
             {
-              fprintf (stderr, "Error while reading s from file\n");
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error while reading s from file\n");
               exit (EXIT_FAILURE);
             }
           else if (verbose >= OUTPUT_VERBOSE)
@@ -1787,7 +1779,7 @@ main (int argc, char *argv[])
       if (result == ECM_ERROR || result == ECM_USER_ERROR)
         {
           if (result == ECM_ERROR) // internal error
-            fprintf (stderr, "Please report internal errors at <%s>.\n",
+            ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Please report internal errors at <%s>.\n",
                      PACKAGE_BUGREPORT);
           exit (EXIT_FAILURE);
         }
@@ -1883,7 +1875,7 @@ main (int argc, char *argv[])
           int ret = write_s_in_file (savefile_s, params->batch_s, save_s_mmap,
                                      (uint64_t) B1);
           if (ret == 0) {
-              fprintf(stderr, "Error writing s to file %s\n", savefile_s);
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error writing s to file %s\n", savefile_s);
               exit(EXIT_FAILURE);
           }
           if (verbose >= OUTPUT_VERBOSE && ret > 0)

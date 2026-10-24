@@ -198,7 +198,7 @@ EvaluateLine:
           free (expr);
           return ret;
 invalid_brent:
-          fprintf (stderr, "Error: invalid Brent row; expected base exponent[+-][L|M] composite (label at most 248 bytes)\n");
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error: invalid Brent row; expected base exponent[+-][L|M] composite (label at most 248 bytes)\n");
           free (expr);
           exit (EXIT_FAILURE);
         }
@@ -234,7 +234,7 @@ invalid_brent:
       mpz_clear(t);
     }
 #if defined (DEBUG_EVALUATOR)
-  gmp_fprintf (stderr, "eval(\"%s\") = %Zd\n", expr, n->n);
+  ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "eval(\"%s\") = %Zd\n", expr, n->n);
 #endif
   free(expr);
   return ret;
@@ -297,7 +297,7 @@ JoinLinesLoop:
       mpz_clear(t);
     }
 #if defined (DEBUG_EVALUATOR)
-  gmp_fprintf (stderr, "eval_str(\"%s\") = %Zd\n", expr, n->n);
+  ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "eval_str(\"%s\") = %Zd\n", expr, n->n);
 #endif
   free(expr);
   if (EndChar && *EndChar)
@@ -318,18 +318,18 @@ eval_power (mpz_t n, const mpz_t arg, char op)
 #if defined (DEBUG_EVALUATOR)
   if ('^'==op || '!'==op || '@'==op || '#'==op || '$'==op)
     {
-      gmp_fprintf (stderr, "eval power %Zd%c%Zd\n", arg, op, n);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "eval power %Zd%c%Zd\n", arg, op, n);
     }
 #endif
 
   // arg must be positive for everything except power
   if (mpz_sgn(arg) < 0) {
     if ('!'==op || '#'==op) {
-      gmp_fprintf (stderr, "\nError - negative argument [%Zd%c]\n", arg, op);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "\nError - negative argument [%Zd%c]\n", arg, op);
       exit (EXIT_FAILURE);
     }
     if ('@'==op || '$'==op) {
-      gmp_fprintf (stderr, "\nError - negative argument [%Zd%c%Zd]\n", arg, op, n);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "\nError - negative argument [%Zd%c%Zd]\n", arg, op, n);
       exit (EXIT_FAILURE);
     }
   }
@@ -337,7 +337,7 @@ eval_power (mpz_t n, const mpz_t arg, char op)
   // second arg must be positive for everything with two args
   if ('^'==op || '@'==op || '$'==op) {
     if (mpz_sgn(n) < 0) {
-      gmp_fprintf (stderr, "\nError - negative argument [%Zd%c%Zd]\n", arg, op, n);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "\nError - negative argument [%Zd%c%Zd]\n", arg, op, n);
       exit (EXIT_FAILURE);
     }
   }
@@ -398,7 +398,7 @@ eval_product (mpz_t n, const mpz_t arg, char op)
 #if defined (DEBUG_EVALUATOR)
   if ('*'==op || '.'==op || '/'==op || '%'==op)
     {
-      gmp_fprintf (stderr, "eval_product %Zd%c%Zd\n", arg, op, n);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "eval_product %Zd%c%Zd\n", arg, op, n);
     }
 #endif
   if ('*' == op || '.' == op)
@@ -410,7 +410,7 @@ eval_product (mpz_t n, const mpz_t arg, char op)
       mpz_tdiv_qr (n, r, arg, n);
       if (mpz_cmp_ui (r, 0) != 0)
         {
-          fprintf (stderr, "Parsing Error: inexact division\n");
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Parsing Error: inexact division\n");
           exit (EXIT_FAILURE);
         }
       mpz_clear (r);
@@ -432,7 +432,7 @@ eval_sum (mpz_t n, const mpz_t arg, char op)
 #if defined (DEBUG_EVALUATOR)
   if ('+'==op || '-'==op)
     {
-      gmp_fprintf (stderr, "eval_sum %Zd%c%Zd\n", arg, op, n);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "eval_sum %Zd%c%Zd\n", arg, op, n);
     }
 #endif
 
@@ -546,18 +546,18 @@ int eval_Phi (mpz_t* params, mpz_t n)
 	  dwMask<<=1;
 	  ++dwIndex;
 	}
-      // gmp_fprintf (stderr, "Taking %Zd^%d-1\n", org_n, iPower);
+      // ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Taking %Zd^%d-1\n", org_n, iPower);
       mpz_pow_ui(T, org_n, iPower);
       mpz_sub_ui(T, T, 1);
     
       if(iMobius&1)
       {
-	// gmp_fprintf (stderr, "Muling D=D*T  %Zd*%Zd\n", D, T);
+	// ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Muling D=D*T  %Zd*%Zd\n", D, T);
 	mpz_mul(D, D, T);
       }
       else
       {
-	// gmp_fprintf (stderr, "Muling n=n*T  %Zd*%Zd\n", n, T);
+	// ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Muling n=n*T  %Zd*%Zd\n", n, T);
 	mpz_mul(n, n, T); 
       }
   }
@@ -585,18 +585,18 @@ int aurif (mpz_t output, mpz_t n, mpz_t base, int sign) // Evaluate Aurifeullian
     }
   if(b==12) // not found
     {
-      gmp_fprintf (stderr, "Error: base %Zd not supported for Aurifeullian factorization yet\n", orig_base);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error: base %Zd not supported for Aurifeullian factorization yet\n", orig_base);
       return 0;
     }
   if(k%((b==5)?b:(2*b))!=0)
     {
-      gmp_fprintf (stderr, "Error: exponent %Zd does not make sense for base %Zd\n", n, orig_base);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error: exponent %Zd does not make sense for base %Zd\n", n, orig_base);
       return 0;
     }
   k/=((b==5)?b:(2*b));
   if(k%2==0)
     {
-      gmp_fprintf (stderr, "Error: exponent %Zd does not make sense for base %Zd\n", n, orig_base);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error: exponent %Zd does not make sense for base %Zd\n", n, orig_base);
       return 0;
     }
   mpz_set(base,orig_base);
@@ -661,7 +661,7 @@ int aurif (mpz_t output, mpz_t n, mpz_t base, int sign) // Evaluate Aurifeullian
     }
   mpz_set(output, C);
   (sign>0 ? mpz_addmul : mpz_submul)(output, D, l);
-  // gmp_fprintf (stderr, "Calculated base=%Zd, exp=%Zd, C=%Zd, D=%Zd, output=%Zd\n",base,n,C,D,output);
+  // ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Calculated base=%Zd, exp=%Zd, C=%Zd, D=%Zd, output=%Zd\n",base,n,C,D,output);
   mpz_clears(orig_base,C,D,l,m,NULL);
   return 1;
 }
@@ -765,7 +765,7 @@ int eval_U (mpz_t *params, mpz_t n)
 	    mpz_addmul (U1,U0,params[1]); // U0 is 2k-1, U1 is 2k
 	    mpz_divexact (U1,U1,params[0]);
          }
-	 /* gmp_fprintf (stderr, "%d %Zd %Zd\n",k,U0,U1); */
+	 /* ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "%d %Zd %Zd\n",k,U0,U1); */
     }
   mpz_set(n, U1);
 
@@ -856,7 +856,7 @@ int eval_primU (mpz_t* params, mpz_t n)
 	  dwMask<<=1;
 	  ++dwIndex;
 	}
-      // gmp_fprintf (stderr, "Taking U(%Zd,%Zd,%d)\n", P,Q,iPower);
+      // ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Taking U(%Zd,%Zd,%d)\n", P,Q,iPower);
       mpz_set_ui(T,iPower);
       if(eval_U(params, T)==0)
       {
@@ -865,12 +865,12 @@ int eval_primU (mpz_t* params, mpz_t n)
     
       if(iMobius&1)
       {
-	// gmp_fprintf (stderr, "Muling D=D*T  %Zd*%Zd\n", D, T);
+	// ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Muling D=D*T  %Zd*%Zd\n", D, T);
 	mpz_mul(D, D, T);
       }
       else
       {
-	// gmp_fprintf (stderr, "Muling n=n*T  %Zd*%Zd\n", n, T);
+	// ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Muling n=n*T  %Zd*%Zd\n", n, T);
 	mpz_mul(n, n, T); 
       }
   }
@@ -936,7 +936,7 @@ int eval_2 (int bInFuncParams)
 	      if (NULL==paren_position)
 	        {
 		  /* No parentheses found */
-		  fprintf (stderr, "\nError - invalid number [%c]\n", expr_str[i]);
+		  ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "\nError - invalid number [%c]\n", expr_str[i]);
 		  exit (EXIT_FAILURE);
 		}
 	      strncpy(tentative_func_name,&expr_str[i],paren_position-&expr_str[i]);
@@ -948,7 +948,7 @@ int eval_2 (int bInFuncParams)
 		}
 	      if(func_id==num_of_funcs)	/* No matching function name found */
 	        {
-		  fprintf (stderr, "Error, Unknown function %s()\n", tentative_func_name);
+		  ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, Unknown function %s()\n", tentative_func_name);
 		  exit (EXIT_FAILURE);
 		}
 	      /* Now we can actually process existing functions */
@@ -959,7 +959,7 @@ int eval_2 (int bInFuncParams)
 		     and this causes the ',' character to act as the end of expression */		
 		  if(eval_2 (1) != 2)
 		    {
-		      fprintf (stderr, "Error, Function %s() requires %d parameters\n", func_names[func_id], func_num_params[func_id]);
+		      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, Function %s() requires %d parameters\n", func_names[func_id], func_num_params[func_id]);
                       exit (EXIT_FAILURE);
 		    }
 		  mpz_set(param_stack[j], t);
@@ -971,7 +971,7 @@ int eval_2 (int bInFuncParams)
 		  mpz_set(n, t);
 		  if( (func_ptrs[func_id])(param_stack, n) == 0 )
 		    {
-		      fprintf (stderr, "\nParsing Error -  Invalid "
+		      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "\nParsing Error -  Invalid "
                                "parameter passed to the %s function\n", func_names[func_id]);
 		      exit (EXIT_FAILURE);
 		    }
@@ -1079,7 +1079,7 @@ MONADIC_SUFFIX_LOOP:
 		    }
 		  else    /* Error - invalid operator */
 		    {
-		      fprintf (stderr, "\nError - unknown operator: '%c'\n", op);
+		      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "\nError - unknown operator: '%c'\n", op);
                       exit (EXIT_FAILURE);
 		     }
 		}

@@ -756,7 +756,7 @@ twisted_hessian_plus(ell_point_t R, ell_point_t P, ell_point_t Q,
     mpres_add(R->z, R->z, E->buf[8], n);
     if(mpz_sgn(R->x) == 0 && mpz_sgn(R->y) == 0 && mpz_sgn(R->z) == 0){
 	// iff (X2:Y2:Z2)=(Z1:gamma^2*X1:gamma*Y1), gamma^3 = a
-	fprintf(stderr, "GASP: X3, Y3 and Z3 are 0\n");
+	ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "GASP: X3, Y3 and Z3 are 0\n");
 	exit(-1);
 #if 0
 	    // TODO: rewrite with above quantities!

@@ -426,7 +426,7 @@ mpzspv_to_mpzv (mpzspv_t x, spv_size_t offset, mpzv_t mpzv,
 
   if (f == NULL)
     {
-      fprintf (stderr, "Cannot allocate memory in mpzspv_to_mpzv\n");
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Cannot allocate memory in mpzspv_to_mpzv\n");
       exit (1);
     }
   
@@ -553,7 +553,7 @@ mpzspv_normalise (mpzspv_t x, spv_size_t offset, spv_size_t len,
   d = (spv_t) malloc (3 * MPZSPV_NORMALISE_STRIDE * sizeof (sp_t));
   if (f == NULL || s == NULL || d == NULL)
     {
-      fprintf (stderr, "Cannot allocate memory in mpzspv_normalise\n");
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Cannot allocate memory in mpzspv_normalise\n");
       exit (1);
     }
   t = mpzspv_init (MPZSPV_NORMALISE_STRIDE, mpzspm);

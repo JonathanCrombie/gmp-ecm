@@ -27,10 +27,14 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #include "ecm-impl.h"
 #include "lchain.h"
 #include <errno.h>
+#include <stdlib.h>
+#include <string.h>
+#include <pthread.h>
 #ifdef _WIN32
 #include <wchar.h>
-#elif defined (__linux__)
-#include <string.h>
+#include <windows.h>
+#include <io.h>
+#else
 #include <unistd.h>
 #endif
 
@@ -60,6 +64,143 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 static ECM_THREAD_LOCAL int VERBOSE = OUTPUT_NORMAL;
 ECM_THREAD_LOCAL int __ecm_cpu_worker = 0;
 ECM_THREAD_LOCAL mpq_srcptr __ecm_original_x0 = NULL;
+
+/* Initialized by the CLI before it starts workers; libecm defaults to plain
+   text. Detect stdout and stderr independently, never a residue/log stream. */
+static int color_enabled[2];
+static ECM_THREAD_LOCAL FILE *color_output, *color_errors;
+static pthread_mutex_t color_mutex = PTHREAD_MUTEX_INITIALIZER;
+#ifdef _WIN32
+#ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+#endif
+static HANDLE color_handles[2];
+static DWORD color_modes[2];
+static int color_restore[2], color_cleanup_registered;
+
+static void
+color_cleanup (void)
+{
+  int i;
+  fflush (stdout);
+  fflush (stderr);
+  for (i = 1; i >= 0; --i)
+    if (color_restore[i]) SetConsoleMode (color_handles[i], color_modes[i]);
+}
+#endif
+
+int
+ecm_color_init (const char *mode)
+{
+  int i, force, disable;
+  const char *no_color = getenv ("NO_COLOR");
+  if (strcmp (mode, "auto") && strcmp (mode, "always") &&
+      strcmp (mode, "never")) return 0;
+  force = strcmp (mode, "always") == 0;
+  disable = strcmp (mode, "never") == 0 ||
+            (!force && no_color && *no_color);
+  for (i = 0; i < 2; ++i)
+    {
+      FILE *out = i ? stderr : stdout;
+      color_enabled[i] = 0;
+      if (disable) continue;
+#ifdef _WIN32
+      {
+        HANDLE handle = (HANDLE) _get_osfhandle (_fileno (out));
+        DWORD mode_bits;
+        if (GetConsoleMode (handle, &mode_bits))
+          {
+            if (!color_restore[i])
+              {
+                color_handles[i] = handle;
+                color_modes[i] = mode_bits;
+              }
+            if (SetConsoleMode (handle, mode_bits | ENABLE_PROCESSED_OUTPUT |
+                                ENABLE_VIRTUAL_TERMINAL_PROCESSING))
+              {
+                color_restore[i] = 1;
+                color_enabled[i] = 1;
+                if (!color_cleanup_registered)
+                  {
+                    atexit (color_cleanup);
+                    color_cleanup_registered = 1;
+                  }
+              }
+          }
+      }
+#else
+      {
+        const char *term = getenv ("TERM"), *ct = getenv ("COLORTERM");
+        /* Conservative, dependency-free ANSI detection. Unknown terminals
+           can opt in with always; TERM=dumb always disables automatic color. */
+        if (isatty (fileno (out)) && term && *term && strcmp (term, "dumb") &&
+            ((ct && *ct) || !strncmp (term, "xterm", 5) ||
+             !strncmp (term, "screen", 6) || !strncmp (term, "tmux", 4) ||
+             !strncmp (term, "rxvt", 4) || !strcmp (term, "linux") ||
+             !strcmp (term, "ansi") || !strcmp (term, "cygwin") ||
+             !strncmp (term, "foot", 4) || !strncmp (term, "alacritty", 9)))
+          color_enabled[i] = 1;
+      }
+#endif
+      if (force) color_enabled[i] = 1;
+    }
+  return 1;
+}
+
+void
+ecm_color_bind (FILE *output, FILE *errors)
+{
+  color_output = output;
+  color_errors = errors;
+}
+
+enum ecm_color_style
+ecm_color_message_style (const char *text)
+{
+  if (strstr (text, "Warning") || strstr (text, "WARNING") ||
+      strstr (text, "warning")) return ECM_COLOR_WARNING;
+  if (strstr (text, "Error") || strstr (text, "ERROR")) return ECM_COLOR_ERROR;
+  if (!strncmp (text, "GPU: factor ", 12)) return ECM_COLOR_FACTOR;
+  if (!strncmp (text, "GPU ", 4) && strstr (text, " batch:"))
+    return ECM_COLOR_HEADING;
+  return ECM_COLOR_PLAIN;
+}
+
+static int
+color_vfprintf (FILE *out, enum ecm_color_style style,
+                const char *format, va_list ap)
+{
+  static const char *codes[] = { "", "\033[36m", "\033[92m",
+                                "\033[33m", "\033[31m" };
+  int enabled = out == stdout || (out && out == color_output) ? color_enabled[0] :
+                out == stderr || (out && out == color_errors) ? color_enabled[1] : 0;
+  int n, failed = 0;
+  if (!enabled) return gmp_vfprintf (out, format, ap);
+  if (style == ECM_COLOR_DIAGNOSTIC)
+    style = ecm_color_message_style (format) == ECM_COLOR_WARNING ?
+            ECM_COLOR_WARNING : ECM_COLOR_ERROR;
+  /* Keep each color/text/reset group together, including stdout vs stderr.
+     Flush before releasing the lock so stdio buffering cannot move a reset
+     past another stream's message. Plain output retains its old buffering. */
+  pthread_mutex_lock (&color_mutex);
+  if (style != ECM_COLOR_PLAIN && fputs (codes[style], out) == EOF) failed = 1;
+  n = gmp_vfprintf (out, format, ap);
+  if (style != ECM_COLOR_PLAIN && fputs ("\033[0m", out) == EOF) failed = 1;
+  if (fflush (out) == EOF) failed = 1;
+  pthread_mutex_unlock (&color_mutex);
+  return failed ? -1 : n;
+}
+
+int
+ecm_color_fprintf (FILE *out, enum ecm_color_style style, const char *format, ...)
+{
+  va_list ap;
+  int n;
+  va_start (ap, format);
+  n = color_vfprintf (out, style, format, ap);
+  va_end (ap);
+  return n;
+}
 
 void 
 mpz_add_si (mpz_t r, mpz_t s, long i)
@@ -262,11 +403,11 @@ outputf (int loglevel, const char *format, ...)
 
   if (loglevel != OUTPUT_ERROR && loglevel <= VERBOSE)
     {
-      n = gmp_vfprintf (ECM_STDOUT, format, ap);
+      n = color_vfprintf (ECM_STDOUT, ecm_color_message_style (format), format, ap);
       fflush (ECM_STDOUT);
     }
   else if (loglevel == OUTPUT_ERROR)
-    n = gmp_vfprintf (ECM_STDERR, format, ap);
+    n = color_vfprintf (ECM_STDERR, ECM_COLOR_DIAGNOSTIC, format, ap);
   
   va_end (ap);
   

@@ -60,6 +60,7 @@ extern size_t mpn_mul_lo_threshold[];
 #define TUNE_LIST_MUL_N_MAX_SIZE 32
 
 #include <stdio.h> /* needed for "FILE *" */
+#include "ecm-color.h"
 #include <limits.h>
 
 #if  defined (__STDC__)                                 \

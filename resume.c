@@ -294,7 +294,7 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
               if (have_x0 || !mpq_inp_str (x0, fd, 0) ||
                   mpz_sgn (mpq_denref (x0)) == 0 || !facceptstr (fd, ";"))
                 {
-                  fprintf (stderr, "Invalid or duplicate X0 in resume record.\n");
+                  ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Invalid or duplicate X0 in resume record.\n");
                   if (have_z) mpz_clear (z);
                   return -1;
                 }
@@ -323,7 +323,7 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
                   else text = "";
                   if (label[0] || parse_brent_label (label, value + 6, &end) != 1 || *end)
                     {
-                      fprintf (stderr, "Resume warning, invalid or duplicate Brent LABEL in COMMENT\n");
+                      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Resume warning, invalid or duplicate Brent LABEL in COMMENT\n");
                       goto error;
                     }
                 }
@@ -365,7 +365,7 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
             {
               if (!gpu)
                 {
-                  fprintf (stderr, "Partial GPU P-1/P+1 residue requires the matching -pm1/-pp1 -gpu -resume.\n");
+                  ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Partial GPU P-1/P+1 residue requires the matching -pm1/-pp1 -gpu -resume.\n");
                   return -1;
                 }
               if (strcmp (tag, "GPU_B1") == 0 && !(have_gpu & 1))
@@ -493,7 +493,7 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
       if (!have_method || !have_x || !have_n || !have_b1 ||
           (*method == ECM_ECM && !have_sigma && !have_a))
         {
-          fprintf (stderr, "Save file line lacks fields\n");
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Save file line lacks fields\n");
           if (gpu) return -1;
           continue;
         }
@@ -516,7 +516,7 @@ read_resumefile_line (int *method, mpz_t x, mpz_t y, mpcandi_t *n,
           if (have_gpu) pm1_checkpoint_checksum (checksum, gpu, *method);
           if (mpz_fdiv_ui (checksum, CHKSUMMOD) != saved_checksum)
             {
-              fprintf (stderr, "Resume file line has bad checksum %u, expected %u\n", 
+              ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Resume file line has bad checksum %u, expected %u\n",
                        saved_checksum, (unsigned int) mpz_fdiv_ui (checksum, CHKSUMMOD));
               mpz_clear (checksum);
               if (gpu) return -1;
@@ -547,7 +547,7 @@ error:
       if (gpu)
         {
           if (have_z) mpz_clear (z);
-          fprintf (stderr, "Invalid GPU P-1/P+1 resume record.\n");
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Invalid GPU P-1/P+1 resume record.\n");
           return -1;
         }
       /* This can occur when reading Prime95 resume files,
@@ -727,7 +727,7 @@ write_resumefile (char *fn, int method, ecm_params params,
 #ifdef DEBUG
   if (fn == NULL)
     {
-      fprintf (stderr, "write_resumefile: fn == NULL\n");
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "write_resumefile: fn == NULL\n");
       exit (EXIT_FAILURE);
     }
 #endif
@@ -735,7 +735,7 @@ write_resumefile (char *fn, int method, ecm_params params,
   file = fopen (fn, "a");
   if (file == NULL)
     {
-      fprintf (stderr, "Could not open file %s for writing\n", fn);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Could not open file %s for writing\n", fn);
       mpz_clear (tmp_x);
       mpz_clear (tmp_y);
       return 0;
@@ -856,7 +856,7 @@ fread_perror(void * restrict data,
 {
   size_t members_read = fread(data, size, nmemb, stream);
   if (members_read != nmemb) {
-      fprintf(stderr, "Could not read %s from file %s\n", data_description, fn);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Could not read %s from file %s\n", data_description, fn);
       perror("");
       if (close_on_error)
         fclose(stream);
@@ -880,7 +880,7 @@ fwrite_perror(const void * restrict data,
 {
   size_t members_written = fwrite(data, size, nmemb, stream);
   if (members_written != nmemb) {
-      fprintf(stderr, "Could not write %s to file %s\n", data_description, fn);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Could not write %s to file %s\n", data_description, fn);
       perror("");
       if (close_on_error)
         fclose(stream);
@@ -907,13 +907,13 @@ write_s_in_file (const char *fn, mpz_t s, int want_mmap, uint64_t B1)
 #ifdef DEBUG
   if (fn == NULL)
     {
-      fprintf (stderr, "write_s_in_file: fn == NULL\n");
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "write_s_in_file: fn == NULL\n");
       exit (EXIT_FAILURE);
     }
 #endif
 #ifndef HAVE_MMAP
   if (want_mmap != 0) {
-    fprintf(stderr, "Refusing to write batch s data to file %s in mmap() "
+    ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Refusing to write batch s data to file %s in mmap() "
             "format because mmap() is not supported on this system. Please "
             "check the the configure log.", fn);
     return 0;
@@ -921,7 +921,7 @@ write_s_in_file (const char *fn, mpz_t s, int want_mmap, uint64_t B1)
 #endif
 
   if (mpz_sgn(s) <= 0) {
-    fprintf(stderr, "Error, s is %s. This should never happen.",
+    ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, s is %s. This should never happen.",
             mpz_sgn(s) == 0 ? "zero" : "negative");
     return 0;
   }
@@ -929,7 +929,7 @@ write_s_in_file (const char *fn, mpz_t s, int want_mmap, uint64_t B1)
   file = fopen (fn, "wb");
   if (file == NULL)
     {
-      fprintf (stderr, "Could not open file %s for writing\n", fn);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Could not open file %s for writing\n", fn);
       return 0;
     }
   
@@ -972,14 +972,14 @@ read_s_from_file (mpz_t s, const char *fn, int want_mmap, double B1)
 #ifdef DEBUG
   if (fn == NULL)
     {
-      fprintf (stderr, "read_s_from_file: fn == NULL\n");
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "read_s_from_file: fn == NULL\n");
       return 1;
     }
 #endif
   
 #ifndef HAVE_MMAP
   if (want_mmap != 0) {
-    fprintf(stderr, "Cannot mmap() batch s data from file %s because mmap() "
+    ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Cannot mmap() batch s data from file %s because mmap() "
             "is not supported on this system. Please check the the configure "
             "log.", fn);
     return 1;
@@ -989,7 +989,7 @@ read_s_from_file (mpz_t s, const char *fn, int want_mmap, double B1)
   file = fopen (fn, "rb");
   if (file == NULL)
     {
-      fprintf (stderr, "Could not open file %s for reading\n", fn);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Could not open file %s for reading\n", fn);
       return 1;
     }
 
@@ -999,7 +999,7 @@ read_s_from_file (mpz_t s, const char *fn, int want_mmap, double B1)
   header.magic = le32toh(header.magic);
   header.B1 = le64toh(header.B1);
   if (header.magic != S_FILE_MAGIC) {
-      fprintf(stderr, "Wrong magic number in file %s; is this a batch "
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Wrong magic number in file %s; is this a batch "
               "product save file? Note that the file format changed after "
               "version 7.0; if this is an old file, please re-create it.\n",
               fn);
@@ -1007,19 +1007,19 @@ read_s_from_file (mpz_t s, const char *fn, int want_mmap, double B1)
       return 1;
   }
   if (header.version != S_FILE_VERSION) {
-    fprintf(stderr, "File %s uses version %hhu format of bsave files, but "
+    ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "File %s uses version %hhu format of bsave files, but "
       "this program uses version %d\n", fn, header.version, S_FILE_VERSION);
     return 1;
   }
   if (header.mmapped != want_mmap) {
-      fprintf(stderr, "File %s uses %smmapped data but we want to read "
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "File %s uses %smmapped data but we want to read "
               "%smmaped data.\n",
               fn, header.mmapped ? "" : "non-", want_mmap ? "" : "non-");
       fclose(file);
       return 1;
   }
   if (header.B1 != (uint64_t) B1) {
-      fprintf(stderr, "Wrong B1 value in file %s; it has stored data for B1 = %"
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Wrong B1 value in file %s; it has stored data for B1 = %"
               PRIu64 " but this run uses B1 = %" PRIu64 "\n",
               fn, header.B1, (uint64_t) B1);
       fclose(file);
@@ -1032,7 +1032,7 @@ read_s_from_file (mpz_t s, const char *fn, int want_mmap, double B1)
     /* printf("Using mmap() for s data\n"); */
 
     if (header.is_le != host_is_le) {
-        fprintf(stderr, "Cannot mmap because file %s has wrong endianness for"
+        ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Cannot mmap because file %s has wrong endianness for"
                 "this system. File uses %s, but host is %s\n",
                 fn, header.is_le ? "little-endian" : "big-endian",
                 host_is_le ? "little-endian" : "big-endian");
@@ -1041,7 +1041,7 @@ read_s_from_file (mpz_t s, const char *fn, int want_mmap, double B1)
     }
 
     if (header.limb_size != sizeof(mp_limb_t)) {
-        fprintf(stderr, "File %s uses %hhu-byte GMP limbs but this machine uses %zu-byte limbs. "
+        ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "File %s uses %hhu-byte GMP limbs but this machine uses %zu-byte limbs. "
                 "Data cannot be mmapped.\n",
                 fn, header.limb_size, sizeof(mp_limb_t));
         fclose(file);
@@ -1050,7 +1050,7 @@ read_s_from_file (mpz_t s, const char *fn, int want_mmap, double B1)
 
     int fd = fileno(file);
     if (fd == -1) {
-        fprintf (stderr, "Could not get file descriptor for file %s\n", fn);
+        ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Could not get file descriptor for file %s\n", fn);
         fclose(file);
         return 1;
     }
@@ -1059,7 +1059,7 @@ read_s_from_file (mpz_t s, const char *fn, int want_mmap, double B1)
     if (fread_perror(&nr_limbs, sizeof(int), 1, file, fn, "size", 1))
         return 1;
     if (nr_limbs < 0) {
-        fprintf(stderr, "Error, nr_limbs in file %s is negative (%d). "
+        ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, nr_limbs in file %s is negative (%d). "
                 "This should never happen.", fn, nr_limbs);
     }
 
@@ -1069,7 +1069,7 @@ read_s_from_file (mpz_t s, const char *fn, int want_mmap, double B1)
     const off_t offset = 0;
     char *s_data = mmap(NULL, filesize, prot, flags, fd, offset);
     if (s_data == MAP_FAILED) {
-        fprintf (stderr, "mmap(NULL, length=%zu, prot=%d, flags=%d, fd=%d, offset=%zu) failed for file %s\n", 
+        ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "mmap(NULL, length=%zu, prot=%d, flags=%d, fd=%d, offset=%zu) failed for file %s\n",
                 (size_t) filesize, prot, flags, fd, (size_t) offset, fn);
         perror("");
         fclose(file);
@@ -1086,7 +1086,7 @@ read_s_from_file (mpz_t s, const char *fn, int want_mmap, double B1)
     ret = mpz_inp_raw (s, file);
     if (ret == 0)
       {
-        fprintf (stderr, "read_s_from_file: 0 bytes read from %s\n", fn);
+        ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "read_s_from_file: 0 bytes read from %s\n", fn);
         fclose(file);
         return 1;
       }
@@ -1096,7 +1096,7 @@ read_s_from_file (mpz_t s, const char *fn, int want_mmap, double B1)
   /* gmp_printf("Read %Zx from %s\n", s, fn); */
   const uint32_t checksum =  mpz_fdiv_ui(s, S_FILE_CHECKSUM_MODULUS);
   if (checksum != header.checksum) {
-     fprintf(stderr, "Checksum in file %s is wrong. File header has %" PRIu32
+     ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Checksum in file %s is wrong. File header has %" PRIu32
        " but checksum over file data is %" PRIu32 "\n",
        fn, header.checksum, checksum);
     return 1;
@@ -1111,7 +1111,7 @@ read_s_from_file (mpz_t s, const char *fn, int want_mmap, double B1)
   mpz_ui_pow_ui (tmp2, 2, val2+1);
   if (mpz_cmp_d (tmp, B1) > 0 || mpz_cmp_d (tmp2, B1) <= 0)
     {
-      fprintf (stderr, "Error, the value of the batch product in %s "
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, the value of the batch product in %s "
                "does not correspond to B1=%1.0f.\n", fn, B1);
       return 1;
     }
@@ -1121,7 +1121,7 @@ read_s_from_file (mpz_t s, const char *fn, int want_mmap, double B1)
   mpz_nextprime (tmp2, tmp);
   if (mpz_divisible_p (s, tmp2))
     {
-      fprintf (stderr, "Error, the value of the batch product in %s "
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, the value of the batch product in %s "
                "does not correspond to B1=%1.0f.\n", fn, B1);
       return 1;
     }
@@ -1132,7 +1132,7 @@ read_s_from_file (mpz_t s, const char *fn, int want_mmap, double B1)
   mpz_mul (tmp, tmp2, tmp2);
   if (!mpz_divisible_p (s, tmp2) || mpz_divisible_p (s, tmp))
     {
-      fprintf (stderr, "Error, the value of the batch product in %s "
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Error, the value of the batch product in %s "
                "does not correspond to B1=%1.0f.\n", fn, B1);
       return 1;
     }

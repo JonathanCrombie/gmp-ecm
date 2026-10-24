@@ -307,7 +307,7 @@ ntt_polyevalT (mpzv_t b, spv_size_t len, mpzv_t *Tree, mpzv_t T,
       TreeFilename = (char *) malloc (strlen (TreeFilenameStem) + 1 + 2 + 1);
       if (TreeFilename == NULL)
         {
-          fprintf (stderr, "Cannot allocate memory in ntt_polyevalT\n");
+          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Cannot allocate memory in ntt_polyevalT\n");
           exit (1);
         }
     }

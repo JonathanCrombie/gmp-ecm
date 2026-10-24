@@ -2500,7 +2500,7 @@ ntt_sqr_reciprocal (mpzv_t R, const mpzv_t S, mpzspv_t dft,
   mpz_mod (R_eval_1, R_eval_1, ntt_context->modulus);
   if (mpz_cmp (R_eval_1, S_eval_1) != 0)
     {
-      gmp_fprintf (stderr, "ntt_sqr_reciprocal: (S(1))^2 = %Zd but "
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "ntt_sqr_reciprocal: (S(1))^2 = %Zd but "
 		   "(S^2)(1) = %Zd\n", S_eval_1, R_eval_1);
 #if 0
       gmp_printf ("Output polynomial is %Zd", R[0]);
@@ -2669,7 +2669,7 @@ pm1fs2 (mpz_t f, const mpres_t X, mpmod_t modulus,
   h = malloc ((params->s_1 + 1) * sizeof (mpz_t));
   if (h == NULL)
     {
-      fprintf (stderr, "Cannot allocate memory in pm1fs2\n");
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Cannot allocate memory in pm1fs2\n");
       exit (1);
     }
   lenG = params->l;
@@ -4061,7 +4061,7 @@ pp1fs2 (mpz_t f, const mpres_t X, mpmod_t modulus,
   h_y = malloc (lenH * sizeof (mpz_t));
   if (h_x == NULL || h_y == NULL)
     {
-      fprintf (stderr, "Cannot allocate memory in pp1fs2\n");
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Cannot allocate memory in pp1fs2\n");
       exit (1);
     }
   g_x = init_list2 (lenG, (unsigned int) abs (modulus->bits));

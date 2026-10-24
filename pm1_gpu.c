@@ -83,12 +83,12 @@ static int read_job(pm1_job *j, FILE *input, FILE *resume, ecm_params p,
     if(r<=0) return r;
     if(method!=p->method || !isfinite(j->start) || j->start<0 || j->start>target ||
        floor(j->start)!=j->start) {
-      fprintf(stderr, "GPU %s requires %s residues with integer B1 <= requested B1.\n",
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "GPU %s requires %s residues with integer B1 <= requested B1.\n",
               method_name(p->method), method_name(p->method));
       return -1;
     }
     if(j->gpu.present && j->gpu.target!=target) {
-      fprintf(stderr, "Finish the interrupted GPU exponent at B1=%.0f before changing B1.\n", j->gpu.target);
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Finish the interrupted GPU exponent at B1=%.0f before changing B1.\n", j->gpu.target);
       return -1;
     }
     if(j->gpu.present) return 1;
@@ -244,7 +244,7 @@ static void batch_progress(pm1_batch *b) {
   batch_lock(b);
   m=b->messages; b->messages=b->last_message=NULL;
   batch_unlock(b);
-  while(m) { next=m->next; fputs(m->text, stdout); free(m); m=next; }
+  while(m) { next=m->next; ecm_color_fprintf(stdout, ecm_color_message_style(m->text), "%s", m->text); free(m); m=next; }
 }
 static void queue_progress(void *arg, const char *text) {
   pm1_batch *b=(pm1_batch *)arg;
@@ -433,7 +433,7 @@ static int checkpoint_buffers(char *filename, pm1_batch *a, pm1_batch *b,
   if(ok) { a->saved_snapshot=a->snapshot; b->saved_snapshot=b->snapshot; }
 unlock:
   batch_unlock(b); batch_unlock(a);
-  if(!ok) fprintf(stderr, "Could not write GPU %s checkpoint %s\n", method_name(p->method), filename);
+  if(!ok) ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Could not write GPU %s checkpoint %s\n", method_name(p->method), filename);
   return ok;
 }
 
@@ -479,7 +479,7 @@ static int report_batch(pm1_batch *a, pm1_batch *b, pm1_job *pending,
     int was_prp=0;
     if(timestamp && verbose) { time_t now=time(NULL); printf("[%.24s]\n", ctime(&now)); }
     print_brent_source(&j->n, verbose ? stdout : stderr);
-    if(verbose) gmp_printf("Input number is %Zd (%u digits)\n", j->n.n, j->n.ndigits);
+    if(verbose) ecm_color_fprintf(stdout, ECM_COLOR_HEADING, "Input number is %Zd (%u digits)\n", j->n.n, j->n.ndigits);
     p->B1done=j->start;
     mpz_set(p->x, j->x);
     mpz_set(p->B2actual, p->B2);
@@ -565,7 +565,7 @@ int pm1_gpu_run(FILE *input, FILE *resume, ecm_params p,
       for(i=b->reported; i<b->count; ++i) if(!save_job(savefile, b->jobs+i, p)) error=1;
       if(have_pending && !save_job(savefile, &pending, p)) error=1;
     }
-    fprintf(stderr, "GPU %s stopped after reading %llu inputs; saved buffered work%s. Unread inputs remain in the input file.\n",
+    ecm_color_fprintf (stderr, ECM_COLOR_WARNING, "GPU %s stopped after reading %llu inputs; saved buffered work%s. Unread inputs remain in the input file.\n",
             method_name(p->method), (unsigned long long)read_count,
             savefile || checkpoint ? "" : " nowhere (no save/checkpoint file)");
   }

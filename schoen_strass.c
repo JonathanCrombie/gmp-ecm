@@ -121,7 +121,7 @@ __gmpn_mod_34lsub1 (mp_limb_t *src, mp_size_t size)
   tp = malloc (size * sizeof (mp_limb_t));
   if (tp == NULL)
     {
-      fprintf (stderr, "Cannot allocate memory in __gmpn_mod_34lsub1\n");
+      ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Cannot allocate memory in __gmpn_mod_34lsub1\n");
       exit (1);
     }
   MPN_COPY (tp, src, size);

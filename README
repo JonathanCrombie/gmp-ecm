@@ -4,6 +4,31 @@ This is the README file for GMP-ECM. (See INSTALL-ecm for installing GMP-ECM
 and the ecm library, and README.lib for using the ecm library.)
 
 
+Colored terminal output
+-----------------------
+
+Use -color auto|always|never (default auto). Factors are bright green,
+warnings yellow, errors red, and input/run headings cyan. Routine progress
+and timing keep the terminal's default color. Examples:
+
+  ecm -color auto -pm1 -inp numbers.txt 1e6
+  ecm -color always -threads 8 -inp numbers.txt 1e6
+  ecm -color never -resume old.save -save new.save 3e6
+
+Auto checks stdout and stderr separately and leaves redirected streams plain.
+On Windows it enables ANSI/VT processing when supported by the console.
+On Unix it checks for a terminal and a recognized ANSI TERM (or COLORTERM);
+TERM=dumb disables automatic color. Unknown terminals can use always.
+A nonempty NO_COLOR environment variable disables auto. Explicit always
+overrides NO_COLOR and includes ANSI sequences even in pipes or redirected
+console output. The never mode disables color.
+
+Quiet-mode (-q) numeric stdout, save/checkpoint files, and BrentFactors.log
+remain plain text in every mode. Internal CPU worker output buffers inherit
+the final terminal policy and are still printed in input order. Color is a
+CLI feature; ordinary libecm callers retain plain output.
+
+
 Parallel independent CPU jobs
 -----------------------------
 

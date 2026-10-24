@@ -111,12 +111,12 @@ include_HEADERS = ecm.h
 noinst_HEADERS = basicdefs.h ecm-impl.h ecm-gmp.h ecm-ecm.h sp.h longlong.h \
                  ecm-params.h mpmod.h ecm-gpu.h torsions.h \
                  cudacommon.h cgbn_stage1.h cgbn_pm1.h pm1_gpu.h cpu_jobs.h ecm-thread.h \
-                 addlaws.h getprime_r.h ecm_int.h lchain.h \
+                 addlaws.h getprime_r.h ecm_int.h lchain.h ecm-color.h \
                  aprtcle/mpz_aprcl.h aprtcle/jacobi_sum.h
 
 EXTRA_DIST = test.pm1 test.pp1 test.ecm README.lib INSTALL-ecm ecm.xml  \
              tests/test-cpu-jobs.py tests/cpu-jobs-interrupt.c tests/test-cpu-jobs-interrupt.py \
-             tests/test-brent-logging.py tests/test-x0-rational.py tests/grouporder-stub.c tests/test-lchain-path.py \
+             tests/test-brent-logging.py tests/test-x0-rational.py tests/grouporder-stub.c tests/test-lchain-path.py tests/test-color.py \
              tests/test-gpu-pm1.py tests/test-gpu-pm1-stop.c \
              tests/test-gpu-pp1.py tests/test-gpu-pp1-stop.c \
              tests/gpu-pp1-interrupt.c \
