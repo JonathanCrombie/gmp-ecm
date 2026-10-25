@@ -62,8 +62,8 @@ with tempfile.TemporaryDirectory(prefix='ecm-colors-') as tmp:
                 check(r.returncode != 1, r.stderr)
                 if color == 'always':
                     check('\x1b[36m' in r.stdout and '\x1b[92m' in r.stdout, r.stdout)
-                    check(re.search(r'\x1b\[92m\*+ Factor found in step \d: \d+\n\x1b\[0m', r.stdout), r.stdout)
-                    check(not any('\x1b' in line for line in r.stdout.splitlines() if line.startswith('Step ')), r.stdout)
+                    check(re.search(r'\x1b\[36m\*+ Factor found in step \d: \x1b\[92m\d+\x1b\[36m\n', r.stdout), r.stdout)
+                    check(re.search(r'\x1b\[36mStep 1', r.stdout), r.stdout)
                 else:
                     check('\x1b' not in r.stdout + r.stderr, (color, r))
                 log = (work / 'BrentFactors.log').read_text()
@@ -103,7 +103,7 @@ with tempfile.TemporaryDirectory(prefix='ecm-colors-') as tmp:
     r, work = run(['-color', 'always', '-v', '-pm1', '-x0', '2/7', '10', '0'],
                   f'2 12700-L {7*prime}')
     check('\x1b[33mWarning:' in r.stdout and
-          re.search(r'\x1b\[92m\*+ Factor found in step 1: 7\n', r.stdout), r)
+          re.search(r'\x1b\[36m\*+ Factor found in step 1: \x1b\[92m7\x1b\[36m\n', r.stdout), r)
     check('\x1b' not in (work / 'BrentFactors.log').read_text(), work)
     large = str((1 << 4000) - 17)
     r, _ = run(['-color', 'always', '-pm1', '-x0', '3', '1', '0'], large)

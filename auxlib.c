@@ -68,6 +68,10 @@ ECM_THREAD_LOCAL mpq_srcptr __ecm_original_x0 = NULL;
 /* Initialized by the CLI before it starts workers; libecm defaults to plain
    text. Detect stdout and stderr independently, never a residue/log stream. */
 static int color_enabled[2];
+static int color_active[2], color_cleanup_registered;
+static const char *color_codes[] = { "\033[36m", "\033[36m", "\033[92m",
+                                     "\033[33m", "\033[31m", "\033[35m",
+                                     "\033[90m" };
 static ECM_THREAD_LOCAL FILE *color_output, *color_errors;
 static pthread_mutex_t color_mutex = PTHREAD_MUTEX_INITIALIZER;
 #ifdef _WIN32
@@ -76,7 +80,8 @@ static pthread_mutex_t color_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 static HANDLE color_handles[2];
 static DWORD color_modes[2];
-static int color_restore[2], color_cleanup_registered;
+static int color_restore[2];
+#endif
 
 static void
 color_cleanup (void)
@@ -84,10 +89,18 @@ color_cleanup (void)
   int i;
   fflush (stdout);
   fflush (stderr);
+  for (i = 0; i < 2; ++i)
+    if (color_active[i])
+      {
+        FILE *out = i ? stderr : stdout;
+        fputs ("\033[0m", out);
+        fflush (out);
+      }
+#ifdef _WIN32
   for (i = 1; i >= 0; --i)
     if (color_restore[i]) SetConsoleMode (color_handles[i], color_modes[i]);
-}
 #endif
+}
 
 int
 ecm_color_init (const char *mode)
@@ -96,6 +109,11 @@ ecm_color_init (const char *mode)
   const char *no_color = getenv ("NO_COLOR");
   if (strcmp (mode, "auto") && strcmp (mode, "always") &&
       strcmp (mode, "never")) return 0;
+  if (!color_cleanup_registered)
+    {
+      atexit (color_cleanup);
+      color_cleanup_registered = 1;
+    }
   force = strcmp (mode, "always") == 0;
   disable = strcmp (mode, "never") == 0 ||
             (!force && no_color && *no_color);
@@ -120,11 +138,6 @@ ecm_color_init (const char *mode)
               {
                 color_restore[i] = 1;
                 color_enabled[i] = 1;
-                if (!color_cleanup_registered)
-                  {
-                    atexit (color_cleanup);
-                    color_cleanup_registered = 1;
-                  }
               }
           }
       }
@@ -148,10 +161,49 @@ ecm_color_init (const char *mode)
 }
 
 void
+ecm_color_start (void)
+{
+  int i;
+  /* The CLI calls this after option parsing and before starting any workers.
+     Keeping the terminal cyan also covers APR-CL and other direct printf
+     calls without inserting escapes into their file output. */
+  for (i = 0; i < 2; ++i)
+    if (color_enabled[i] && !color_active[i])
+      {
+        FILE *out = i ? stderr : stdout;
+        fputs (color_codes[ECM_COLOR_PLAIN], out);
+        fflush (out);
+        color_active[i] = 1;
+      }
+}
+
+void
 ecm_color_bind (FILE *output, FILE *errors)
 {
   color_output = output;
   color_errors = errors;
+}
+
+static int
+color_stream_index (FILE *out)
+{
+  if (out == stdout || (out && out == color_output)) return 0;
+  if (out == stderr || (out && out == color_errors)) return 1;
+  return -1;
+}
+
+const char *
+ecm_color_sequence (FILE *out, enum ecm_color_style style)
+{
+  int index = color_stream_index (out);
+  if (index < 0 || !color_enabled[index]) return "";
+  return color_codes[style == ECM_COLOR_DIAGNOSTIC ? ECM_COLOR_ERROR : style];
+}
+
+const char *
+ecm_color_output_sequence (enum ecm_color_style style)
+{
+  return ecm_color_sequence (ECM_STDOUT, style);
 }
 
 enum ecm_color_style
@@ -160,7 +212,6 @@ ecm_color_message_style (const char *text)
   if (strstr (text, "Warning") || strstr (text, "WARNING") ||
       strstr (text, "warning")) return ECM_COLOR_WARNING;
   if (strstr (text, "Error") || strstr (text, "ERROR")) return ECM_COLOR_ERROR;
-  if (!strncmp (text, "GPU: factor ", 12)) return ECM_COLOR_FACTOR;
   if (!strncmp (text, "GPU ", 4) && strstr (text, " batch:"))
     return ECM_COLOR_HEADING;
   return ECM_COLOR_PLAIN;
@@ -170,22 +221,21 @@ static int
 color_vfprintf (FILE *out, enum ecm_color_style style,
                 const char *format, va_list ap)
 {
-  static const char *codes[] = { "", "\033[36m", "\033[92m",
-                                "\033[33m", "\033[31m" };
-  int enabled = out == stdout || (out && out == color_output) ? color_enabled[0] :
-                out == stderr || (out && out == color_errors) ? color_enabled[1] : 0;
+  int index = color_stream_index (out);
   int n, failed = 0;
-  if (!enabled) return gmp_vfprintf (out, format, ap);
+  if (index < 0 || !color_enabled[index]) return gmp_vfprintf (out, format, ap);
   if (style == ECM_COLOR_DIAGNOSTIC)
     style = ecm_color_message_style (format) == ECM_COLOR_WARNING ?
             ECM_COLOR_WARNING : ECM_COLOR_ERROR;
   /* Keep each color/text/reset group together, including stdout vs stderr.
      Flush before releasing the lock so stdio buffering cannot move a reset
-     past another stream's message. Plain output retains its old buffering. */
+     past another stream's message. Restore cyan while the CLI is running;
+     color_cleanup restores the terminal default at exit. */
   pthread_mutex_lock (&color_mutex);
-  if (style != ECM_COLOR_PLAIN && fputs (codes[style], out) == EOF) failed = 1;
+  if (fputs (color_codes[style], out) == EOF) failed = 1;
   n = gmp_vfprintf (out, format, ap);
-  if (style != ECM_COLOR_PLAIN && fputs ("\033[0m", out) == EOF) failed = 1;
+  if (fputs (color_active[index] ? color_codes[ECM_COLOR_PLAIN] : "\033[0m", out) == EOF)
+    failed = 1;
   if (fflush (out) == EOF) failed = 1;
   pthread_mutex_unlock (&color_mutex);
   return failed ? -1 : n;

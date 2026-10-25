@@ -366,7 +366,9 @@ static int report_job(cpu_job *j, const cpu_job_options *o, int resumed,
                         j->p->method == ECM_PM1 ? "P-1" : "P+1");
     if (!resumed && !o->count) ecm_color_fprintf(stdout, ECM_COLOR_HEADING, "Run %u:\n", j->run);
     if (!resumed && o->count > 1) ecm_color_fprintf(stdout, ECM_COLOR_HEADING, "Run %u out of %u:\n", j->run, o->count);
-    ecm_color_fprintf(stdout, ECM_COLOR_HEADING, "Input number is %Zd (%u digits)\n", j->n, nb_digits(j->n));
+    ecm_color_fprintf(stdout, ECM_COLOR_HEADING, "Input number is %s%Zd%s (%u digits)\n",
+                     ecm_color_sequence(stdout, ECM_COLOR_SOURCE), j->n,
+                     ecm_color_sequence(stdout, ECM_COLOR_PLAIN), nb_digits(j->n));
   }
   rewind(j->output);
   while ((size = fread(buffer, 1, sizeof(buffer), j->output)) != 0)

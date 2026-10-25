@@ -479,7 +479,9 @@ static int report_batch(pm1_batch *a, pm1_batch *b, pm1_job *pending,
     int was_prp=0;
     if(timestamp && verbose) { time_t now=time(NULL); printf("[%.24s]\n", ctime(&now)); }
     print_brent_source(&j->n, verbose ? stdout : stderr);
-    if(verbose) ecm_color_fprintf(stdout, ECM_COLOR_HEADING, "Input number is %Zd (%u digits)\n", j->n.n, j->n.ndigits);
+    if(verbose) ecm_color_fprintf(stdout, ECM_COLOR_HEADING, "Input number is %s%Zd%s (%u digits)\n",
+                                 ecm_color_sequence(stdout, ECM_COLOR_SOURCE), j->n.n,
+                                 ecm_color_sequence(stdout, ECM_COLOR_PLAIN), j->n.ndigits);
     p->B1done=j->start;
     mpz_set(p->x, j->x);
     mpz_set(p->B2actual, p->B2);

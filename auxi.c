@@ -128,11 +128,13 @@ print_brent_source (const mpcandi_t *n, FILE *out)
   if (n->brent_label[0] == 0) return;
   exponent = strchr (n->brent_label, ' ') + 1;
   sign = exponent + strcspn (exponent, "+-");
-  ecm_color_fprintf (out, ECM_COLOR_HEADING, "Source number: %.*s^%.*s %c 1%s%.*s%s\n",
+  ecm_color_fprintf (out, ECM_COLOR_HEADING, "Source number: %s%.*s^%.*s %c 1%s%.*s%s%s\n",
+           ecm_color_sequence (out, ECM_COLOR_SOURCE),
            (int) (exponent - n->brent_label - 1), n->brent_label,
            (int) (sign - exponent), exponent, *sign,
            sign[1] ? " (" : "", sign[1] ? 1 : 0, sign + 1,
-           sign[1] ? ")" : "");
+           sign[1] ? ")" : "",
+           ecm_color_sequence (out, ECM_COLOR_PLAIN));
 }
 
 int
@@ -173,8 +175,10 @@ process_newfactor (mpz_t g, int result, mpcandi_t *n, int method,
     if (mpz_cmp (g, f) == 0 || (gpu != 0 && mpz_cmp_ui (g, 1) != 0))
       {
         if (verbose > 0)
-          ecm_color_fprintf (stdout, ECM_COLOR_FACTOR,
-                             "********** Factor found in step %u: %Zd\n", ABS (result), f);
+          ecm_color_fprintf (stdout, ECM_COLOR_PLAIN,
+              "********** Factor found in step %u: %s%Zd%s\n", ABS (result),
+              ecm_color_sequence (stdout, ECM_COLOR_FACTOR), f,
+              ecm_color_sequence (stdout, ECM_COLOR_PLAIN));
         else mpz_out_str (stdout, 10, f);
         if (mpz_cmp (f, n->n) == 0)
           print_brent_source (n, verbose > 0 ? stdout : stderr);
@@ -197,10 +201,12 @@ process_newfactor (mpz_t g, int result, mpcandi_t *n, int method,
 
       if (verbose >= 1 && !n->brent_label[0])
         {
-          ecm_color_fprintf (stdout, ECM_COLOR_FACTOR,
-              "Found %s factor of %u digits: %Zd\n",
+          ecm_color_fprintf (stdout, ECM_COLOR_PLAIN,
+              "Found %s factor of %u digits: %s%Zd%s\n",
               factor_is_prime == ECM_FAC_PRIME ? "prime" :
-              factor_is_prime == ECM_FAC_PRP ? "probable prime" : "composite", nb_digits (f), f);
+              factor_is_prime == ECM_FAC_PRP ? "probable prime" : "composite", nb_digits (f),
+              ecm_color_sequence (stdout, ECM_COLOR_FACTOR), f,
+              ecm_color_sequence (stdout, ECM_COLOR_PLAIN));
         }
 
       append_brent_factor (n, f, factor_is_prime, method,

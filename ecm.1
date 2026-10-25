@@ -192,7 +192,7 @@ Enable or disable the Number\-Theoretic Transform code for polynomial arithmetic
 .PP
 \fB\-color auto|always|never\fR
 .RS 4
-Color factors bright green, warnings yellow, errors red, and input/run headings cyan\&. The default, auto, detects each output stream separately and leaves redirected streams plain\&. A nonempty NO_COLOR disables auto\&. Always forces ANSI colors, including through redirection, and overrides NO_COLOR; never disables colors\&. Quiet numeric stdout, save/checkpoint files, and BrentFactors.log always remain plain text\&.
+Color normal console text cyan, source and input number values magenta, only the actual factor digits bright green, echoed log entries grey, warnings yellow, and errors red\&. The terminal's default color is restored at exit\&. The default, auto, detects each output stream separately and leaves redirected streams plain\&. A nonempty NO_COLOR disables auto\&. Always forces ANSI colors, including through redirection, and overrides NO_COLOR; never disables colors\&. Quiet numeric stdout, save/checkpoint files, and BrentFactors.log always remain plain text\&.
 .RE
 .PP
 \fB\-q\fR

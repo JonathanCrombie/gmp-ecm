@@ -688,8 +688,10 @@ int process_results(mpz_t *factors, int *array_found,
     array_found[i] = findfactor(factors[i], N, x_final, z_final);
     if (array_found[i] != ECM_NO_FACTOR_FOUND) {
       youpi = array_found[i];
-      outputf (OUTPUT_NORMAL, "GPU: factor %Zd found in Step 1 with curve %ld (-sigma %d:%" PRIu64 ")\n",
-          factors[i], i, ECM_PARAM_BATCH_32BITS_D, sigma + (uint64_t)i);
+      outputf (OUTPUT_NORMAL, "GPU: factor %s%Zd%s found in Step 1 with curve %ld (-sigma %d:%" PRIu64 ")\n",
+          ecm_color_output_sequence (ECM_COLOR_FACTOR), factors[i],
+          ecm_color_output_sequence (ECM_COLOR_PLAIN),
+          i, ECM_PARAM_BATCH_32BITS_D, sigma + (uint64_t)i);
     }
   }
 

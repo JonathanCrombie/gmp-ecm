@@ -7,9 +7,14 @@ and the ecm library, and README.lib for using the ecm library.)
 Colored terminal output
 -----------------------
 
-Use -color auto|always|never (default auto). Factors are bright green,
-warnings yellow, errors red, and input/run headings cyan. Routine progress
-and timing keep the terminal's default color. Examples:
+Use -color auto|always|never (default auto). Normal console text is cyan,
+including headings, progress, timing and cofactors.
+The entire "Adding Log Entry ..." console line is grey.
+The values after "Source number:" and "Input number is" are magenta;
+their labels and the input digit count stay cyan.
+Only the actual factor digits are bright green; the surrounding text stays
+cyan. Warnings are yellow and errors red. The terminal's default color is
+restored when the program exits. Examples:
 
   ecm -color auto -pm1 -inp numbers.txt 1e6
   ecm -color always -threads 8 -inp numbers.txt 1e6

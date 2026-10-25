@@ -113,6 +113,7 @@ same_file_path (const char *a, const char *b)
 static void
 usage (void)
 {
+    ecm_color_start ();
     printf ("Usage: ecm [options] B1 [[B2min-]B2] < file\n");
     printf ("\nParameters:\n");
     printf ("  B1           stage 1 bound\n");
@@ -186,6 +187,7 @@ usage (void)
 static void
 print_config (void)
 {
+  ecm_color_start ();
   printf ("Compilation options:\n");
 #ifdef __MPIR_VERSION
      printf ("Included MPIR header files version %d.%d.%d\n", 
@@ -381,8 +383,10 @@ mod_from_mpq (mpz_t r, mpq_t q, const mpcandi_t *candidate, int verbose, int met
             if (verbose > 1)
               ecm_color_fprintf (stdout, ECM_COLOR_WARNING,
                                  "Warning: factor found during initialization\n");
-            ecm_color_fprintf (stdout, ECM_COLOR_FACTOR,
-                               "********** Factor found in step 1: %Zd\n", r);
+            ecm_color_fprintf (stdout, ECM_COLOR_PLAIN,
+                "********** Factor found in step 1: %s%Zd%s\n",
+                ecm_color_sequence (stdout, ECM_COLOR_FACTOR), r,
+                ecm_color_sequence (stdout, ECM_COLOR_PLAIN));
           }
         else mpz_out_str (stdout, 10, r);
 	if (mpz_cmp (r, N) == 0)
@@ -1049,6 +1053,8 @@ main (int argc, char *argv[])
       char Gmp_version[64];
       char out0[128], *out = out0;
 
+      ecm_color_start ();
+
 #ifdef __MPIR_VERSION
       sprintf (Gmp_version, "MPIR %d.%d.%d", __MPIR_VERSION,
 	       __MPIR_VERSION_MINOR, __MPIR_VERSION_PATCHLEVEL);
@@ -1525,11 +1531,13 @@ main (int argc, char *argv[])
             /* first time this candidate has been run 
                (if looping more than once) */
               if (n.cpExpr && n.nexprlen < MAX_NUMBER_PRINT_LEN)
-                  ecm_color_fprintf (stdout, ECM_COLOR_HEADING, "Input number is %s (%u digits)\n", n.cpExpr,
-                                                                  n.ndigits);
+                  ecm_color_fprintf (stdout, ECM_COLOR_HEADING, "Input number is %s%s%s (%u digits)\n",
+                              ecm_color_sequence (stdout, ECM_COLOR_SOURCE), n.cpExpr,
+                              ecm_color_sequence (stdout, ECM_COLOR_PLAIN), n.ndigits);
               else if (n.ndigits < MAX_NUMBER_PRINT_LEN)
-                  ecm_color_fprintf (stdout, ECM_COLOR_HEADING, "Input number is %Zd (%u digits)\n",
-                              n.n, n.ndigits);
+                  ecm_color_fprintf (stdout, ECM_COLOR_HEADING, "Input number is %s%Zd%s (%u digits)\n",
+                              ecm_color_sequence (stdout, ECM_COLOR_SOURCE), n.n,
+                              ecm_color_sequence (stdout, ECM_COLOR_PLAIN), n.ndigits);
               else
                 {
                   /* Print only first and last ten digits of the number */
@@ -1542,7 +1550,9 @@ main (int argc, char *argv[])
                   mpz_ui_pow_ui (u, 10, 10);
                   mpz_tdiv_r (u, n.n, u);
                   ecm_color_fprintf (stdout, ECM_COLOR_HEADING,
-                                     "Input number is %Zd...%Zd (%u digits)\n", t, u, n.ndigits);
+                                     "Input number is %s%Zd...%Zd%s (%u digits)\n",
+                                     ecm_color_sequence (stdout, ECM_COLOR_SOURCE), t, u,
+                                     ecm_color_sequence (stdout, ECM_COLOR_PLAIN), n.ndigits);
                   mpz_clear (u);
                   mpz_clear (t);
                 }
@@ -1556,9 +1566,13 @@ main (int argc, char *argv[])
          however, we will print to stderr to keep stdout "clean"
          for verbose=0 like behavior */
       else if (cnt == count && n.isPrp)
-          ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Input number is %Zd (%u digits)\n"
-                           "****** Warning: input is probably prime ******\n", 
-                           n.n, n.ndigits);
+        {
+          ecm_color_fprintf (stderr, ECM_COLOR_HEADING, "Input number is %s%Zd%s (%u digits)\n",
+                           ecm_color_sequence (stderr, ECM_COLOR_SOURCE), n.n,
+                           ecm_color_sequence (stderr, ECM_COLOR_PLAIN), n.ndigits);
+          ecm_color_fprintf (stderr, ECM_COLOR_WARNING,
+                           "****** Warning: input is probably prime ******\n");
+        }
 
       mpgocandi_fixup_with_N (&go, &n);
 

@@ -508,8 +508,10 @@ gpu_ecm (mpz_t f, const ecm_params params, ecm_params mutable_params, mpz_t n, d
       if (youpi != ECM_NO_FACTOR_FOUND)
         {
           array_found[i] = youpi;
-          outputf (OUTPUT_NORMAL, "GPU: factor %Zd found in Step 2 with"
-                " curve %u (-sigma 3:%" PRIu64 ")\n", factors[i], i, i+firstsigma_ui);
+          outputf (OUTPUT_NORMAL, "GPU: factor %s%Zd%s found in Step 2 with"
+                " curve %u (-sigma 3:%" PRIu64 ")\n",
+                ecm_color_output_sequence (ECM_COLOR_FACTOR), factors[i],
+                ecm_color_output_sequence (ECM_COLOR_PLAIN), i, i+firstsigma_ui);
           /* factor_found corresponds to the first factor found */
           if (factor_found == ECM_NO_FACTOR_FOUND)
             factor_found = youpi;

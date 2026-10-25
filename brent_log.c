@@ -310,9 +310,8 @@ append_brent_factor (const mpcandi_t *candidate, const mpz_t factor, int prime, 
     ecm_color_fprintf (stderr, ECM_COLOR_DIAGNOSTIC, "Warning: cannot allocate BrentFactors.log record.\n");
   else if (write_record (record) && out)
     {
-      fputs ("\nAdding Log Entry --> \"", out);
-      fwrite (record, 1, strlen (record) - strlen (newline), out);
-      fputs ("\"\n", out);
+      ecm_color_fprintf (out, ECM_COLOR_LOG, "\nAdding Log Entry --> \"%.*s\"\n",
+                         (int) (strlen (record) - strlen (newline)), record);
       fflush (out);
     }
   free_gmp_string (record);
