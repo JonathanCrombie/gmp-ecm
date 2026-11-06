@@ -32,6 +32,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #include "ecm-impl.h"
 #include "ecm-ecm.h"
 #include "pm1_gpu.h"
+#include "gpu_batch_policy.h"
 #include "cpu_jobs.h"
 
 #include "config.h"
@@ -170,7 +171,8 @@ usage (void)
 #endif
 #ifdef WITH_GPU
     printf ("  -gpu         Use CGBN for computations stage 1.\n");
-    printf ("  -gpubatch n  Batch n inputs for -pm1/-pp1 -gpu (default 4096).\n");
+    printf ("  -gpubatch n  Fixed batch size for -pm1/-pp1 -gpu (default: adaptive, %d%% load target).\n",
+            ECM_GPU_TARGET_UTILIZATION);
     printf ("  -gpudevice n Use device n to execute GPU code (by default, "
                                                           "CUDA chooses)\n");
     printf ("  -gpucurves n Compute on n curves in parallel on the GPU (by "

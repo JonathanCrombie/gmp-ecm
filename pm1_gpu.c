@@ -4,6 +4,7 @@
 #include "pm1_gpu.h"
 #ifdef WITH_GPU
 #include "cgbn_pm1.h"
+#include "gpu_batch_policy.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,6 +63,13 @@ static void job_clear(pm1_job *j) {
   mpcandi_t_free(&j->n);
   mpz_clear(j->x); mpq_clear(j->x0); mpz_clear(j->factor);
   mpz_clears(j->gpu.base, j->gpu.next, NULL);
+}
+
+/* Inputs with an already known factor do not enter the CUDA kernel. In
+   particular, a huge even input must still report factor 2 without requiring
+   a compiled CGBN width large enough to hold that input. */
+static size_t job_gpu_bits(const pm1_job *j) {
+  return j->status==ECM_NO_FACTOR_FOUND ? mpz_sizeinbase(j->n.n, 2) : 1;
 }
 
 /* 1 = candidate, 0 = EOF, -1 = malformed/unsupported input. */
@@ -183,6 +191,8 @@ typedef struct {
   uint64_t read_count;
   double target;
   int device, verbose, running, done, cancel, result, method;
+  cgbn_p1_autotune *tuner;
+  cgbn_p1_batch_plan plan;
   int (*stop_asap)(void);
   pm1_message *messages, *last_message;
 #ifdef _WIN32
@@ -236,6 +246,40 @@ fail:
   free(b->jobs); free(b->values); free(b->residues); free(b->bases); free(b->moduli);
   free(b->next_values); free(b->next);
   return 0;
+}
+
+/* Grow only an idle buffer. Transfer GMP ownership without copying limbs;
+   pointer arrays are rebuilt by start_batch after the final size is known. */
+static int batch_reserve(pm1_batch *b, unsigned capacity) {
+  unsigned i;
+  pm1_job *jobs;
+  mpz_t *values, *next_values;
+  mpz_ptr *residues, *next;
+  mpz_srcptr *bases, *moduli;
+  if(capacity<=b->capacity) return 1;
+  jobs=(pm1_job *)malloc((size_t)capacity*sizeof(pm1_job));
+  values=(mpz_t *)malloc((size_t)capacity*sizeof(mpz_t));
+  next_values=(mpz_t *)malloc((size_t)capacity*sizeof(mpz_t));
+  residues=(mpz_ptr *)malloc((size_t)capacity*sizeof(mpz_ptr));
+  next=(mpz_ptr *)malloc((size_t)capacity*sizeof(mpz_ptr));
+  bases=(mpz_srcptr *)malloc((size_t)capacity*sizeof(mpz_srcptr));
+  moduli=(mpz_srcptr *)malloc((size_t)capacity*sizeof(mpz_srcptr));
+  if(!jobs || !values || !next_values || !residues || !next || !bases || !moduli) {
+    free(jobs); free(values); free(next_values); free(residues); free(next); free(bases); free(moduli);
+    return 0;
+  }
+  memcpy(jobs, b->jobs, b->capacity*sizeof(pm1_job));
+  memcpy(values, b->values, b->capacity*sizeof(mpz_t));
+  memcpy(next_values, b->next_values, b->capacity*sizeof(mpz_t));
+  for(i=b->capacity; i<capacity; ++i) {
+    job_init(jobs+i); mpz_init(values[i]); mpz_init(next_values[i]);
+  }
+  free(b->jobs); free(b->values); free(b->next_values);
+  free(b->residues); free(b->next); free(b->bases); free(b->moduli);
+  b->jobs=jobs; b->values=values; b->next_values=next_values;
+  b->residues=residues; b->next=next; b->bases=bases; b->moduli=moduli;
+  b->capacity=capacity;
+  return 1;
 }
 
 /* Detach before printing: a slow console must never hold the worker's lock. */
@@ -311,7 +355,11 @@ static void *batch_worker(void *arg)
   uint64_t bits=b->jobs[0].gpu.bits;
   float milliseconds=0;
   int result;
-  if(b->method==ECM_PP1)
+  if(b->tuner)
+    result=cgbn_p1_stage1_adaptive(b->residues, b->method==ECM_PP1 ? b->next : NULL,
+                    b->bases, b->moduli, b->active, b->exponent, &bits, b->device,
+                    &milliseconds, b->verbose, &callbacks, b->tuner);
+  else if(b->method==ECM_PP1)
     result=cgbn_pp1_stage1_run(b->residues, b->next, b->bases, b->moduli, b->active,
                     b->exponent, &bits, b->device, &milliseconds, b->verbose, &callbacks);
   else
@@ -329,13 +377,21 @@ static int fill_batch(pm1_batch *b, pm1_job *pending, int *have_pending,
                        int *eof, uint64_t *read_count, FILE *input, FILE *resume,
                        ecm_params p, double B1, double B1done, int primetest,
                        int specific_x0, mpq_t x0, mpgocandi_t *go) {
+  unsigned limit=b->tuner ? 1 : b->capacity;
+  memset(&b->plan, 0, sizeof(b->plan));
   b->count=b->reported=b->snapshot=b->saved_snapshot=0;
   b->done=b->cancel=b->result=0;
   if(*have_pending) {
     pm1_job swap=b->jobs[0]; b->jobs[0]=*pending; *pending=swap;
     b->count=1; *have_pending=0;
+    if(b->tuner) {
+      if(cgbn_p1_plan_batch(b->tuner, job_gpu_bits(b->jobs),
+                            p->method==ECM_PP1, &b->plan)) return 0;
+      limit=b->plan.batch_inputs;
+      if(!batch_reserve(b, limit)) return 0;
+    }
   }
-  while(b->count<b->capacity && !*eof && !(p->stop_asap && p->stop_asap())) {
+  while(b->count<limit && !*eof && !(p->stop_asap && p->stop_asap())) {
     pm1_job *j=b->jobs+b->count;
     int r=read_job(j, input, resume, p, B1, B1done, primetest, specific_x0, x0, go);
     if(r<0) return 0;
@@ -344,6 +400,20 @@ static int fill_batch(pm1_batch *b, pm1_job *pending, int *have_pending,
     if(b->count && (j->start!=b->jobs[0].start || j->gpu.bits!=b->jobs[0].gpu.bits)) {
       pm1_job swap=*pending; *pending=*j; *j=swap;
       *have_pending=1; break;
+    }
+    if(b->tuner && job_gpu_bits(j)>b->plan.width) {
+      cgbn_p1_batch_plan plan;
+      if(cgbn_p1_plan_batch(b->tuner, job_gpu_bits(j),
+                            p->method==ECM_PP1, &plan)) { ++b->count; return 0; }
+      /* A larger kernel can fit fewer inputs. Keep the already admitted
+         inputs together and carry this width-changing input to the next
+         batch rather than overfilling or reordering either batch. */
+      if(b->count>=plan.batch_inputs) {
+        pm1_job swap=*pending; *pending=*j; *j=swap;
+        *have_pending=1; break;
+      }
+      b->plan=plan; limit=plan.batch_inputs;
+      if(!batch_reserve(b, limit)) { ++b->count; return 0; }
     }
     ++b->count;
   }
@@ -373,6 +443,21 @@ static int start_batch(pm1_batch *b, ecm_params p, double target,
     snprintf(message, sizeof(message), "GPU %s batch: %u inputs (%llu read so far)\n",
              method_name(p->method), b->count, (unsigned long long)b->read_count);
     queue_progress(b, message);
+    if(b->tuner) {
+      snprintf(message, sizeof(message),
+        "GPU auto batch: capacity %u, resident inputs %u, CGBN<%u,%u>, duty %.1f%%, target %d%%\n",
+        b->plan.batch_inputs, b->plan.resident_inputs, b->plan.width, b->plan.tpi,
+        100*b->plan.duty, ECM_GPU_TARGET_UTILIZATION);
+      queue_progress(b, message);
+      if(b->plan.utilization<0) {
+        snprintf(message, sizeof(message),
+          "GPU auto batch: utilization unavailable; using occupancy and %.0f%% launch duty\n", 100*b->plan.duty);
+        queue_progress(b, message);
+      } else {
+        snprintf(message, sizeof(message), "GPU auto batch: sampled device utilization %d%%\n", b->plan.utilization);
+        queue_progress(b, message);
+      }
+    }
   }
   if(!b->active) { b->done=1; ++b->snapshot; return 1; }
   if(*cached_start!=b->jobs[0].start) {
@@ -526,10 +611,23 @@ int pm1_gpu_run(FILE *input, FILE *resume, ecm_params p,
   double cached_start=-1;
   uint64_t read_count=0;
   unsigned i;
-  int have_pending=0, eof=0, result=0, error=0;
-  if(!capacity) capacity=4096;
-  if(!batch_init(a, capacity)) return ECM_EXIT_ERROR;
-  if(!batch_init(b, capacity)) { batch_clear(a); return ECM_EXIT_ERROR; }
+  int have_pending=0, eof=0, result=0, error=0, read_ahead;
+  cgbn_p1_autotune *tuner=NULL;
+  if(!capacity) {
+    tuner=cgbn_p1_autotune_create(p->gpu_device);
+    if(!tuner) return ECM_EXIT_ERROR;
+    capacity=1;
+  }
+  if(!batch_init(a, capacity)) { cgbn_p1_autotune_destroy(tuner); return ECM_EXIT_ERROR; }
+  if(!batch_init(b, capacity)) {
+    batch_clear(a); cgbn_p1_autotune_destroy(tuner); return ECM_EXIT_ERROR;
+  }
+  a->tuner=b->tuner=tuner;
+  /* At 100% duty, automatic capacity depends on the kernel and input width,
+     not on the running batch's final load sample. Prepare the idle buffer
+     while the worker runs, just as for an explicit fixed batch capacity.
+     Lower compile-time targets still wait for fresh load feedback. */
+  read_ahead=!tuner || ECM_GPU_TARGET_UTILIZATION==100;
   job_init(&pending);
   mpz_inits(saved_exponent, continuation, NULL);
   p->gpu=0; p->chkfilename=NULL;
@@ -540,12 +638,15 @@ int pm1_gpu_run(FILE *input, FILE *resume, ecm_params p,
                 p, B1, B1done, primetest, specific_x0, x0, go)) error=1;
   if(!error && a->count && !start_batch(a, p, B1, saved_exponent, continuation, &cached_start)) error=1;
   while(!error && a->count) {
-    /* Parsing happens on the main thread while stage 1 runs on the worker. */
-    if(!fill_batch(b, &pending, &have_pending, &eof, &read_count, input, resume,
+    /* Only the main thread reads inputs or writes saves. The worker owns a;
+       fill_batch grows only idle b and preserves any boundary lookahead. */
+    if(read_ahead && !fill_batch(b, &pending, &have_pending, &eof, &read_count, input, resume,
                   p, B1, B1done, primetest, specific_x0, x0, go)) { error=1; break; }
     if(!checkpoint_buffers(checkpoint, a, b, have_pending ? &pending : NULL, p, 1)) { error=1; break; }
     if(!wait_batch(a, b, have_pending ? &pending : NULL, checkpoint, p)) { error=1; break; }
     if(p->stop_asap && p->stop_asap()) break;
+    if(!read_ahead && !fill_batch(b, &pending, &have_pending, &eof, &read_count, input, resume,
+                  p, B1, B1done, primetest, specific_x0, x0, go)) { error=1; break; }
     /* Submit the next batch BEFORE printing or saving the completed one. */
     if(b->count && !start_batch(b, p, B1, saved_exponent, continuation, &cached_start)) { error=1; break; }
     if(!checkpoint_buffers(checkpoint, a, b, have_pending ? &pending : NULL, p, 0) ||
@@ -572,6 +673,7 @@ int pm1_gpu_run(FILE *input, FILE *resume, ecm_params p,
             savefile || checkpoint ? "" : " nowhere (no save/checkpoint file)");
   }
   batch_clear(a); batch_clear(b); job_clear(&pending);
+  cgbn_p1_autotune_destroy(tuner);
   mpz_clears(saved_exponent, continuation, NULL);
   return error ? ECM_EXIT_ERROR : result;
 }

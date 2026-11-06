@@ -698,6 +698,12 @@ dnl Check if a GPU version is asked, for which GPU and where CUDA is install.
 dnl See acinclude.m4 for details.
 CU_CHECK_CUDA
 
+dnl Optional NVML telemetry is loaded at runtime; GPU-only builds need dlopen
+dnl too, including on older Linux systems where it is supplied by libdl.
+AS_IF([test "x$enable_gpu" = "xyes"], [
+  AS_CASE([$host_os], [mingw*|cygwin*], [], [AC_SEARCH_LIBS([dlopen], [dl])])
+])
+
 LIBS="$LIBS $GWLIB"
 
 GMP_FINISH

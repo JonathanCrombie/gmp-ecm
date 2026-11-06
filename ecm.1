@@ -326,6 +326,22 @@ ecm \-chkpnt foo \-pm1 1e10 < largenumber\&.txt
 .RE
 .SH "LOOP MODE"
 .PP
+\fB\-gpubatch \fIn\fR\fR
+.RS 4
+Set a fixed input batch capacity for GPU P\-1 or P+1 (1 to 1048576)\&.
+Without this option, capacity adapts to GPU kernel occupancy, the largest
+input size\&. Automatic mode targets 100% utilization with a full estimated
+resident wave and no deliberate pauses between launches\&. It reserves no
+headroom for competing GPU work\&. Optional driver telemetry reports load
+but does not throttle launches at this target\&. CPU preparation, output and
+driver scheduling can still leave idle gaps\&. Occupancy-based sizing also
+works without telemetry\&.
+Explicit \-gpubatch disables automatic sizing and pacing\&. Sizes change
+between batches; input/save order and overlap with CPU reporting are
+preserved\&. Automatic mode reads and prepares the next batch while the GPU
+processes the current batch\&. ECM curve batching is unchanged\&. See README.gpu\&.
+.RE
+.PP
 The
 \(lqloop mode\(rq
 (option

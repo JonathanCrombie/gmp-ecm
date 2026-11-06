@@ -1,5 +1,6 @@
 /* Test-only CLI wrapper: compile main.c with -Dmain=ecm_cli_main and
-   pm1_gpu.c with -Dcgbn_pp1_stage1_run=test_pp1_stage1_run. A real signal
+   pm1_gpu.c with -Dcgbn_pp1_stage1_run=test_pp1_stage1_run and
+   -Dcgbn_p1_stage1_adaptive=test_p1_stage1_adaptive. A real signal
    after two launches exercises the ordinary CLI save/checkpoint path. */
 #include <signal.h>
 #include <stdlib.h>
@@ -38,4 +39,18 @@ int test_pp1_stage1_run(mpz_ptr *residues, mpz_ptr *next,
                            ++batches==batch ? &wrapped : callbacks);
 }
 int ecm_cli_main(int, char **);
+int test_p1_stage1_adaptive(mpz_ptr *residues, mpz_ptr *next,
+                       mpz_srcptr *bases, mpz_srcptr *moduli,
+                       uint32_t count, mpz_srcptr exponent, uint64_t *bits_done,
+                       int device, float *milliseconds, int verbose,
+                       const cgbn_pm1_callbacks *callbacks, cgbn_p1_autotune *tuner) {
+  static unsigned batches;
+  const char *selection=getenv("ECM_TEST_STOP_BATCH");
+  unsigned batch=selection ? (unsigned)atoi(selection) : 1;
+  interrupt_context context={callbacks, 0};
+  cgbn_pm1_callbacks wrapped={stop, checkpoint, progress, &context};
+  return cgbn_p1_stage1_adaptive(residues, next, bases, moduli, count, exponent,
+                           bits_done, device, milliseconds, verbose,
+                           ++batches==batch ? &wrapped : callbacks, tuner);
+}
 int main(int argc, char **argv) { return ecm_cli_main(argc, argv); }

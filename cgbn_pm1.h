@@ -2,6 +2,7 @@
 #ifndef CGBN_PM1_H
 #define CGBN_PM1_H
 #include <stdint.h>
+#include <stddef.h>
 #include <gmp.h>
 #ifdef __cplusplus
 extern "C" {
@@ -15,6 +16,24 @@ typedef struct {
   void (*progress)(void *, const char *);
   void *arg;
 } cgbn_pm1_callbacks;
+/* CLI-only adaptive scheduling. Existing library calls retain fixed scheduling.
+   The controller is shared between the reader and one GPU worker; destroy it
+   only after all workers have joined. No residue format changes are needed. */
+typedef struct cgbn_p1_autotune cgbn_p1_autotune;
+typedef struct {
+  unsigned width, tpi, resident_inputs, batch_inputs;
+  int utilization; /* -1 means telemetry unavailable, never zero load. */
+  double duty;
+} cgbn_p1_batch_plan;
+cgbn_p1_autotune *cgbn_p1_autotune_create(int device);
+void cgbn_p1_autotune_destroy(cgbn_p1_autotune *);
+int cgbn_p1_plan_batch(cgbn_p1_autotune *, size_t max_bits, int pp1,
+                     cgbn_p1_batch_plan *);
+int cgbn_p1_stage1_adaptive(mpz_ptr *residues, mpz_ptr *next,
+                   mpz_srcptr *bases, mpz_srcptr *moduli,
+                   uint32_t count, mpz_srcptr exponent, uint64_t *bits_done,
+                   int device, float *milliseconds, int verbose,
+                   const cgbn_pm1_callbacks *callbacks, cgbn_p1_autotune *);
 int cgbn_pm1_stage1_run(mpz_ptr *residues, mpz_srcptr *bases, mpz_srcptr *moduli,
                        uint32_t count, mpz_srcptr exponent, uint64_t *bits_done,
                        int device, float *milliseconds, int verbose,

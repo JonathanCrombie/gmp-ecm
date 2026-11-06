@@ -145,19 +145,51 @@ bugs, or observations.
 
 AI Extra: Batched P-1 and P+1 stage 1 on different numbers
 
-  ./ecm -pm1 -gpu -gpubatch 4096 -inp numbers.txt 100000 0
+  ./ecm -pm1 -gpu -inp numbers.txt 100000 0
+  ./ecm -pp1 -gpu -inp numbers.txt 100000 0
+
+These modes compute stage 1 for a batch of different inputs, then perform
+the selected method's stage 2 on the CPU unless B2 is zero. By default, the
+batch capacity adapts to the selected GPU, kernel width and method.
+CUDA occupancy determines the maximum active blocks per multiprocessor;
+the default admits one estimated resident wave, rounded to whole blocks
+and capped at 65536 inputs. The largest input selects the common CGBN width.
+If a wider input would overfill the current batch, it starts the next batch.
+Inputs within a batch traverse the same exponent together and are saved
+after completion; neither input nor save order changes.
+
+The target is 100% whole-device utilization. Automatic mode uses a full
+estimated resident wave and does not deliberately pause between approximately
+50 ms launches. Capacity still follows the GPU, kernel and input width; a
+batch already in progress keeps its inputs until it ends. At this target,
+no headroom is reserved for competing GPU work, and measured utilization
+does not reduce the batch capacity or launch duty.
+
+Optional NVML telemetry is loaded from the NVIDIA driver and matched by PCI
+bus ID. It reports device load; if unavailable (including unsupported WSL
+drivers), occupancy-based sizing and unpaced launches still work. Verbose
+output reports capacity, telemetry, launch duty and wall time. This is a
+best-effort target, not a guarantee of continuous 100% readings or simultaneous
+hardware scheduling. CPU input preparation, output, display activity and
+driver scheduling can leave gaps between GPU work.
+
+An explicit -gpubatch n fixes the capacity and disables automatic pacing and
+load monitoring, preserving the previous behavior. For example:
+
   ./ecm -pp1 -gpu -gpubatch 4096 -inp numbers.txt 100000 0
 
-These modes compute stage 1 for up to 4096 different inputs at a time,
-then perform the selected method's stage 2 on the CPU unless B2 is zero. -gpubatch sets the
-batch capacity (default 4096); the final batch may contain fewer numbers.
+The final batch or a resume-boundary batch may contain fewer numbers.
 -gpudevice selects the CUDA device. -gpucurves remains an ECM-only option.
 Input expressions and Brent labels are accepted by the usual input parser.
 
 Two batches are buffered. A dedicated worker runs GPU stage 1 for the next
 batch while the main thread reports factors, writes saves, and runs CPU
-stage 2 for the preceding batch. Inputs for the next batch are also read
-while the GPU is working. Results and save records remain in input order.
+stage 2 for the preceding batch. Both automatic (100% target) and fixed
+batches read and prepare the next batch in the idle buffer while the GPU is
+working. Automatic sizing still follows the next inputs' width and method.
+Results and save records remain in input order, including buffered work in
+an interruption checkpoint. A build using a lower utilization target waits
+for the current batch to finish before sizing the next automatic batch.
 GPU progress messages are queued during CPU reporting, then displayed at
 the batch boundary; slow console output cannot block CUDA launches. If CPU
 processing takes longer than GPU stage 1, the GPU can still finish the next

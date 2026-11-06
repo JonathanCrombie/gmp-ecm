@@ -110,11 +110,12 @@ endif
 include_HEADERS = ecm.h
 noinst_HEADERS = basicdefs.h ecm-impl.h ecm-gmp.h ecm-ecm.h sp.h longlong.h \
                  ecm-params.h mpmod.h ecm-gpu.h torsions.h \
-                 cudacommon.h cgbn_stage1.h cgbn_pm1.h pm1_gpu.h cpu_jobs.h ecm-thread.h \
+                 cudacommon.h cgbn_stage1.h cgbn_pm1.h pm1_gpu.h gpu_batch_policy.h gpu_load_monitor.h cpu_jobs.h ecm-thread.h \
                  addlaws.h getprime_r.h ecm_int.h lchain.h ecm-color.h \
                  aprtcle/mpz_aprcl.h aprtcle/jacobi_sum.h
 
 EXTRA_DIST = test.pm1 test.pp1 test.ecm README.lib INSTALL-ecm ecm.xml  \
+             tests/test-gpu-adaptive.py \
              tests/test-cpu-jobs.py tests/cpu-jobs-interrupt.c tests/test-cpu-jobs-interrupt.py \
              tests/test-brent-logging.py tests/test-x0-rational.py tests/grouporder-stub.c tests/test-lchain-path.py tests/test-color.py \
              tests/test-gpu-pm1.py tests/test-gpu-pm1-stop.c \
@@ -143,6 +144,8 @@ DISTCLEANFILES = config.m4 LCG.log Lchain_codes.dat
 if WANT_GPU
 .cu.lo: cgbn_stage1.h
 		$(LIBTOOL) --tag=CC --mode=compile $(NVCC) --compile $(NVCCFLAGS) --compiler-options -fPIC $(CPPFLAGS) -o $@ $^ -static
+cgbn_pm1.lo: $(srcdir)/cgbn_pm1.cu $(srcdir)/cgbn_pm1.h $(srcdir)/gpu_batch_policy.h $(srcdir)/gpu_load_monitor.h
+		$(LIBTOOL) --tag=CC --mode=compile $(NVCC) --compile $(NVCCFLAGS) --compiler-options -fPIC $(CPPFLAGS) -o $@ $(srcdir)/cgbn_pm1.cu -static
 endif
 
 ecm-params:	bench_mulredc$(EXEEXT) tune$(EXEEXT)
@@ -151,7 +154,8 @@ ecm-params:	bench_mulredc$(EXEEXT) tune$(EXEEXT)
 		./bench_mulredc > ecm-params.h
 		./tune >> ecm-params.h
 
-TEST_LIST = tests/t-getprime_r tests/t-random-seed
+TEST_LIST = tests/t-getprime_r tests/t-random-seed tests/test-gpu-batch-policy
+tests_test_gpu_batch_policy_SOURCES = tests/test-gpu-batch-policy.c
 if WANT_GPU
 TEST_LIST += tests/test-gpu-pm1-stop tests/test-gpu-pp1-stop
 tests_test_gpu_pm1_stop_SOURCES = tests/test-gpu-pm1-stop.c
